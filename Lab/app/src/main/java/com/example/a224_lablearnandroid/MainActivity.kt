@@ -3,45 +3,54 @@ package com.example.a224_lablearnandroid
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.a224_lablearnandroid.ui.theme._224_LabLearnAndroidTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
-            _224_LabLearnAndroidTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(color = Color.Gray)
+                    .padding(32.dp)
+            ) {
+                // ส่วนของ HP Bar (พื้นหลังสีขาว)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .background(color = Color.White)
+                ) {
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.24f)
+                            .fillMaxSize()
+                            .background(color = Color.Red)
+                    )
+
+
+                    Text(
+                        text = "HP: 24/100",
+                        modifier = Modifier
+                            .align(alignment = Alignment.Center)
+                            .padding(horizontal = 8.dp),
+                        color = Color.Black
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    _224_LabLearnAndroidTheme {
-        Greeting("Android")
     }
 }
