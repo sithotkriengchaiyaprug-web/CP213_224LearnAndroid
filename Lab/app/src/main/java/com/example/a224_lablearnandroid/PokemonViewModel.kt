@@ -1,85 +1,30 @@
 package com.example.a224_lablearnandroid
 
-import android.os.Bundle
-import android.util.Log
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource.Companion.SideEffect
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.a224_lablearnandroid.utils.PokemonNetwork
+import com.example.a224_lablearnandroid.utils.PokemonEntry
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
-class LifeCycleComposeActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                LifecycleDemo(modifier = Modifier.padding(innerPadding))
+class PokemonViewModel : ViewModel() {
+    private val _pokemonList = MutableStateFlow<List<PokemonEntry>>(emptyList())
+    val pokemonList: StateFlow<List<PokemonEntry>> = _pokemonList
+
+    init {
+        fetchPokemon()
+    }
+
+    private fun fetchPokemon() {
+        viewModelScope.launch {
+            try {
+                // ดึงข้อมูลจาก API ผ่าน Object ที่คุณสร้างไว้ใน utils
+                val response = PokemonNetwork.api.getKantoPokedex()
+                _pokemonList.value = response.pokemon_entries
+            } catch (e: Exception) {
+                // จัดการ Error เช่น กรณีไม่มี Internet
             }
         }
     }
-}
-
-@Composable
-fun LifecycleDemo(modifier: Modifier = Modifier) {
-    var show by remember { mutableStateOf(true) }
-
-    Column(modifier = modifier) {
-        Button(onClick = { show = !show }) {
-            Text(if (show) "Hide" else "Show")
-        }
-
-        if (show) {
-            LifecycleComponent()
-        }
-    }
-}
-
-@Composable
-fun LifecycleComponent() {
-    // State สำหรับ Recomposition
-    var text by remember { mutableStateOf("") }
-
-    // Log เมื่อ Recompose
-    SideEffect {
-        Log.d("ComposeLifecycle", "Recompose: $text")
-    }
-
-    // Log เมื่อ Enter/Leave
-    DisposableEffect(Unit) {
-        Log.d("ComposeLifecycle", "Enter Composition")
-        onDispose {
-            Log.d("ComposeLifecycle", "Leave Composition")
-        }
-    }
-
-    Column {
-        Text(text = "Unstable State: $text")
-        TextField(
-            value = text,
-            onValueChange = { text = it },
-            label = { Text("Type to Recompose") }
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview2() {
-    LifecycleDemo()
 }
