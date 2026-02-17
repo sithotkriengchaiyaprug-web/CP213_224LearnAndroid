@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -13,39 +13,39 @@
         android:theme="@style/Theme._224_LabLearnAndroid"
         tools:targetApi="31">
         <activity
-            android:name=".ListActivity"
+            android:name=".RPGCardActivity"
             android:exported="false"
-            android:label="@string/title_activity_list"
+            android:label="@string/title_activity_rpgcard"
             android:theme="@style/Theme._224_LabLearnAndroid" />
+
         <activity
-            android:name=".ui.theme.ListActivity"
-            android:exported="false"
-            android:label="@string/title_activity_list"
-            android:theme="@style/Theme._224_LabLearnAndroid" />
-        <activity
-            android:name=".MainActivity2"
+            android:name=".MenuActivity"
             android:exported="true"
-            android:label="@string/title_activity_main2"
-            android:theme="@style/Theme._224_LabLearnAndroid">
-
-            <!-- <intent-filter> -->
-            <!-- <action android:name="android.intent.action.MAIN" /> -->
-
-
-            <!-- <category android:name="android.intent.category.LAUNCHER" /> -->
-            <!-- </intent-filter> -->
-        </activity>
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:theme="@style/Theme._224_LabLearnAndroid">
+            android:label="@string/title_activity_menu"
+            android:theme="@style/Theme._224_LabLearnAndroid" >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name="PokedexActivity"
+            android:exported="true"
+            android:label="PokedexActivity"
+            android:theme="@style/Theme._224_LabLearnAndroid" >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".SharedPreferencesActivity"
+            android:exported="false"
+            android:label="@string/title_activity_shared_preferences"
+            android:theme="@style/Theme._224_LabLearnAndroid" />
+
     </application>
 
 </manifest>
