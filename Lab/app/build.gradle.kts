@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
@@ -49,6 +49,8 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.coil.compose)
+    implementation(libs.androidx.appcompat)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -57,14 +59,13 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
-
-    implementation("io.coil-kt:coil-compose:2.5.0") // Check for the latest version
-
-    // Retrofit สำหรับคุยกับ Server
+    implementation("io.coil-kt:coil-compose:2.5.0")
+    // Retrofit à¸ªà¸³à¸«à¸£à¸±à¸šà¸„à¸¸à¸¢à¸à¸±à¸š Server
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    // Converter สำหรับแปลง JSON เป็น Data Class (Gson)
+    // Converter à¸ªà¸³à¸«à¸£à¸±à¸šà¹à¸›à¸¥à¸‡ JSON à¹€à¸›à¹‡à¸™ Data Class (Gson)
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-
-    // Lifecycle & ViewModel สำหรับ Compose
+    // Lifecycle & ViewModel à¸ªà¸³à¸«à¸£à¸±à¸š Compose
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
+    // Location Services
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 }
