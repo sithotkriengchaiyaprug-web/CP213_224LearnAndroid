@@ -8,7 +8,8 @@ data class HomeUiState(
     val totalSpentToday: Double = 0.0,
     val recentTransactions: List<Transaction> = emptyList(),
     val isLoading: Boolean = true,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val editingTransaction: Transaction? = null
 ) {
     val spentPercentage: Float
         get() = if (dailyBudgetLimit > 0) {

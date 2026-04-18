@@ -5,6 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.example.zerotouchbudget.presentation.settings.SettingsScreen
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -15,7 +20,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface {
-                    HomeScreen()
+                    var currentScreen by remember { mutableStateOf("home") }
+
+                    when (currentScreen) {
+                        "home" -> HomeScreen(
+                            onSettingsClick = { currentScreen = "settings" }
+                        )
+                        "settings" -> SettingsScreen(
+                            onBack = { currentScreen = "home" }
+                        )
+                    }
                 }
             }
         }
