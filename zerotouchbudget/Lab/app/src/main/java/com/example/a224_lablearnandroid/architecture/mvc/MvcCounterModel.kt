@@ -1,4 +1,4 @@
-package com.example.a224_lablearnandroid.architecture.mvc
+﻿package com.example.a224_lablearnandroid.architecture.mvc
 
 class MvcCounterModel {
     private var count = 0

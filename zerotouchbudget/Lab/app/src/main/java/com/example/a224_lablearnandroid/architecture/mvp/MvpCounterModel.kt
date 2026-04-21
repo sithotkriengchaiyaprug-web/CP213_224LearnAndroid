@@ -1,6 +1,6 @@
-package com.example.a224_lablearnandroid.architecture.mvc
+﻿package com.example.a224_lablearnandroid.architecture.mvp
 
-class MvcCounterModel {
+class MvpCounterModel {
     private var count = 0
 
     fun getCount(): Int {
