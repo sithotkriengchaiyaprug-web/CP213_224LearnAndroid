@@ -7,9 +7,10 @@ data class HomeUiState(
     val dailyBudgetLimit: Double = 100.0,
     val totalSpentToday: Double = 0.0,
     val recentTransactions: List<Transaction> = emptyList(),
-    val isLoading: Boolean = true,
+    val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val editingTransaction: Transaction? = null
+    val editingTransaction: Transaction? = null,
+    val isAutoScanEnabled: Boolean = true // เพิ่มสถานะ Auto Scan
 ) {
     val spentPercentage: Float
         get() = if (dailyBudgetLimit > 0) {

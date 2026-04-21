@@ -1,11 +1,2 @@
-package com.example.zerotouchbudget.domain.repository
-
-import com.example.zerotouchbudget.domain.model.DailySummary
-import kotlinx.coroutines.flow.Flow
-
-interface DailySummaryRepository {
-    fun getSummaryForDate(date: String): Flow<DailySummary?>
-    suspend fun saveSummary(summary: DailySummary)
-    suspend fun getTotalAccumulatedSurplus(): Double
-    suspend fun updateBudgetLimit(date: String, newLimit: Double)
-}
+// File marked for deletion due to redeclaration. 
+// The interface should only exist in the domain layer.

@@ -44,4 +44,9 @@ class DailySummaryRepositoryImpl @Inject constructor(
             dailySummaryDao.insertOrUpdate(newSummary)
         }
     }
+
+    override fun getSummariesInRange(startDate: String, endDate: String): Flow<List<DailySummary>> {
+        return dailySummaryDao.getSummariesInRange(startDate, endDate)
+            .map { list -> list.map { it.toDomainModel() } }
+    }
 }

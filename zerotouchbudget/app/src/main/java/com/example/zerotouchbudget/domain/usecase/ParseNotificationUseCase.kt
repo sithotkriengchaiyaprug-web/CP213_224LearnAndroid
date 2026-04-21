@@ -10,51 +10,79 @@ class ParseNotificationUseCase @Inject constructor(
     private val repository: TransactionRepository
 ) {
     suspend operator fun invoke(title: String, text: String, packageName: String) {
-        val amount = extractAmount(text)
-        if (amount == null) return
+        val amount = extractAmount(text) ?: return
         val brand = extractBrand(text, title)
+        val category = mapCategory(brand, text)
 
         val transaction = Transaction(
             id = UUID.randomUUID().toString(),
             amount = amount,
             brand = brand,
-            category = "Uncategorized",
+            category = category,
             timestamp = System.currentTimeMillis(),
             source = TransactionSource.NOTIFICATION,
-            note = "Auto-detected from " + packageName
+            note = "Auto-detected from $packageName"
         )
 
         repository.insertTransaction(transaction)
     }
 
     private fun extractAmount(text: String): Double? {
-        val regex1 = Regex("(?i)(?:amount|paid|transfer)\\s*:?\\s*([0-9,]+\\.?[0-9]*)")
-        val regex2 = Regex("(?i)THB\\s*([0-9,]+\\.?[0-9]*)")
-        val regex3 = Regex("([0-9,]+\\.?[0-9]*)\\s*(?i)(?:THB|baht)")
+        val candidates = mutableListOf<Double>()
+        val patterns = listOf(
+            Regex("(?i)(?:amount|paid|transfer|ยอดเงิน|จำนวนเงิน|ชำระเงิน)\\s*:?\\s*([0-9,]+\\.?[0-9]*)"),
+            Regex("(?i)THB\\s*([0-9,]+\\.?[0-9]*)"),
+            Regex("([0-9,]+\\.?[0-9]*)\\s*(?i)(?:บาท|baht|THB)")
+        )
 
-        var match = regex1.find(text)
-        if (match == null) match = regex2.find(text)
-        if (match == null) match = regex3.find(text)
-        if (match == null) return null
+        for (regex in patterns) {
+            regex.findAll(text).forEach { match ->
+                val value = match.groupValues[1]
+                    .replace(",", "")
+                    .toDoubleOrNull()
 
-        val rawValue: String = match.groupValues.get(1)
-        val sb = StringBuilder()
-        for (i in 0 until rawValue.length) {
-            val c = rawValue[i]
-            if (c != ',') {
-                sb.append(c)
+                if (value != null && value in 1.0..100000.0) {
+                    candidates.add(value)
+                }
             }
         }
-        return sb.toString().toDoubleOrNull()
+        return candidates.maxOrNull()
     }
 
     private fun extractBrand(text: String, title: String): String {
-        val regex = Regex("(?i)(?:at|@)\\s+(.+?)(?:\\s|$)")
-        val match = regex.find(text)
-        if (match != null) {
-            val brand: String = match.groupValues.get(1)
-            return brand.trim()
+        val patterns = listOf(
+            Regex("(?i)(?:at|@|to|ที่ร้าน|โอนไปยัง)\\s+([^\\d\\n]+)"),
+            Regex("(?i)(?:ร้าน|merchant)\\s*:?\\s*([^\\d\\n]+)")
+        )
+
+        for (regex in patterns) {
+            val match = regex.find(text)
+            if (match != null) {
+                return cleanBrand(match.groupValues[1])
+            }
         }
-        return title.take(30)
+        return cleanBrand(title)
+    }
+
+    private fun cleanBrand(raw: String): String {
+        return raw
+            .replace(Regex("[^\\u0E00-\\u0E7Fa-zA-Z0-9 ]"), "")
+            .replace(Regex("(?i)(k-plus|scb|krungthai|bbl|kma)"), "")
+            .trim()
+            .ifEmpty { "Unknown" }
+    }
+
+    private fun mapCategory(brand: String, text: String): String {
+        val b = brand.lowercase()
+        val t = text.lowercase()
+
+        return when {
+            listOf("starbucks", "cafe", "amazon").any { b.contains(it) } -> "Drinks"
+            listOf("7-11", "seven", "lotus", "tops").any { b.contains(it) } -> "Groceries"
+            listOf("grab", "lineman", "foodpanda").any { b.contains(it) } -> "Food Delivery"
+            listOf("shell", "ptt", "bts", "mrt").any { b.contains(it) } -> "Transport"
+            listOf("electric", "water", "internet").any { t.contains(it) } -> "Bills"
+            else -> "General"
+        }
     }
 }

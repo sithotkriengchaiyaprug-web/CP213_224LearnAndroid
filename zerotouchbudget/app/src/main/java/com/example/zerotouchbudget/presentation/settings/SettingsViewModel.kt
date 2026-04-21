@@ -1,12 +1,12 @@
 package com.example.zerotouchbudget.presentation.settings
 
 import android.content.Context
+import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.zerotouchbudget.domain.repository.DailySummaryRepository
 import com.example.zerotouchbudget.domain.util.DateUtils
 import com.example.zerotouchbudget.presentation.widget.BudgetWidget
-import androidx.glance.appwidget.updateAll
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +24,9 @@ class SettingsViewModel @Inject constructor(
 
     private val _currentBudget = MutableStateFlow(100.0)
     val currentBudget: StateFlow<Double> = _currentBudget.asStateFlow()
+
+    private val _isAutoScanEnabled = MutableStateFlow(true)
+    val isAutoScanEnabled: StateFlow<Boolean> = _isAutoScanEnabled.asStateFlow()
 
     init {
         loadCurrentBudget()
@@ -46,5 +49,10 @@ class SettingsViewModel @Inject constructor(
             _currentBudget.value = newBudget
             BudgetWidget().updateAll(context)
         }
+    }
+
+    fun toggleAutoScan(enabled: Boolean) {
+        _isAutoScanEnabled.value = enabled
+        // TODO: Save to DataStore/SharedPreferences if needed
     }
 }

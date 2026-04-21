@@ -21,4 +21,7 @@ interface DailySummaryDao {
 
     @Query("SELECT COALESCE(SUM(surplus), 0.0) FROM daily_summaries")
     suspend fun getTotalAccumulatedSurplus(): Double
+
+    @Query("SELECT * FROM daily_summaries WHERE date BETWEEN :startDate AND :endDate ORDER BY date ASC")
+    fun getSummariesInRange(startDate: String, endDate: String): Flow<List<DailySummaryEntity>>
 }

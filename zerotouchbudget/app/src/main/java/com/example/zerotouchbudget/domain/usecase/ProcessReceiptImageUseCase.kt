@@ -1,6 +1,8 @@
 package com.example.zerotouchbudget.domain.usecase
 
 import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.util.Log
 import com.example.zerotouchbudget.domain.model.Transaction
 import com.example.zerotouchbudget.domain.model.TransactionSource
 import com.example.zerotouchbudget.domain.repository.TransactionRepository
@@ -14,33 +16,82 @@ class ProcessReceiptImageUseCase @Inject constructor(
     private val generativeModel: GenerativeModel,
     private val repository: TransactionRepository
 ) {
-    suspend operator fun invoke(bitmap: Bitmap): Result<Transaction> = runCatching {
+    suspend operator fun invoke(bitmap: Bitmap?): Result<Transaction> = runCatching {
+        if (bitmap == null) throw Exception("Bitmap is null")
+
+        // 1. Resize Image (Best Practice)
+        val resizedBitmap = resizeBitmap(bitmap, 1024)
+        
+        // 2. Explicit Prompt
         val prompt = """
-            Analyze this receipt. Extract the total amount and the store/brand name.
-            Return ONLY a valid JSON object in this exact format:
-            {"amount": 150.50, "brand": "Starbucks"}
-            Do not include markdown formatting, backticks, or any other text.
+            Analyze the attached image of a receipt or bank slip.
+            
+            Extract the following info:
+            - total amount (as a number)
+            - merchant/store name (as brand)
+
+            Rules:
+            - Return ONLY valid JSON.
+            - No markdown (no ```json).
+            - No explanations.
+
+            Format: {"amount": 0.0, "brand": "Name"}
         """.trimIndent()
 
+        // 3. Multimodal Input
         val response = generativeModel.generateContent(content {
-            image(bitmap)
+            image(resizedBitmap)
             text(prompt)
         })
 
-        val jsonText = response.text ?: throw Exception("Empty response from Gemini")
-        val jsonObject = JSONObject(jsonText)
+        val rawText = response.text ?: throw Exception("Empty response from Gemini")
+        Log.d("GeminiScan", "Raw Response: ${rawText}")
+
+        // 4. Robust JSON Parsing
+        val cleanText = rawText
+            .replace("```json", "")
+            .replace("```", "")
+            .trim()
+
+        val jsonMatch = Regex("\\{.*\\}").find(cleanText.replace("\n", ""))
+            ?: throw Exception("Invalid JSON format from AI")
+
+        val json = JSONObject(jsonMatch.value)
+        val amount = json.optDouble("amount", 0.0)
+        val brand = json.optString("brand", "Unknown").trim()
+
+        // 5. Validation
+        if (amount <= 0.0) throw Exception("Could not extract valid amount")
 
         val transaction = Transaction(
             id = UUID.randomUUID().toString(),
-            amount = jsonObject.getDouble("amount"),
-            brand = jsonObject.getString("brand"),
-            category = "Uncategorized",
+            amount = amount,
+            brand = brand,
+            category = mapCategory(brand),
             timestamp = System.currentTimeMillis(),
             source = TransactionSource.OCR,
-            note = "Scanned from receipt"
+            note = "Scanned via Gemini AI"
         )
 
         repository.insertTransaction(transaction)
         transaction
+    }
+
+    private fun resizeBitmap(source: Bitmap, maxWidth: Int): Bitmap {
+        if (source.width <= maxWidth) return source
+        val aspectRatio = source.height.toDouble() / source.width.toDouble()
+        val targetHeight = (maxWidth * aspectRatio).toInt()
+        return Bitmap.createScaledBitmap(source, maxWidth, targetHeight, true)
+    }
+
+    private fun mapCategory(brand: String): String {
+        val b = brand.lowercase()
+        return when {
+            listOf("starbucks", "cafe", "amazon").any { b.contains(it) } -> "Drinks"
+            listOf("7-11", "seven", "lotus", "tops").any { b.contains(it) } -> "Groceries"
+            listOf("grab", "lineman", "foodpanda").any { b.contains(it) } -> "Food Delivery"
+            listOf("shell", "ptt", "bts", "mrt").any { b.contains(it) } -> "Transport"
+            else -> "General"
+        }
     }
 }

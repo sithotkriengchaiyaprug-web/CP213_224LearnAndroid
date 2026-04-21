@@ -24,10 +24,14 @@ class MainActivity : ComponentActivity() {
 
                     when (currentScreen) {
                         "home" -> HomeScreen(
-                            onSettingsClick = { currentScreen = "settings" }
+                            onSettingsClick = { currentScreen = "settings" },
+                            onCalendarClick = { currentScreen = "calendar" }
                         )
                         "settings" -> SettingsScreen(
                             onBack = { currentScreen = "home" }
+                        )
+                        "calendar" -> MonthlyAnalysisScreen(
+                            onBackClick = { currentScreen = "home" }
                         )
                     }
                 }
