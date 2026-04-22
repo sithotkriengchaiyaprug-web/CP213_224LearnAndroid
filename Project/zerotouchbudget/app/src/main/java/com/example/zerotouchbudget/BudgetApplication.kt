@@ -7,6 +7,8 @@ import com.example.zerotouchbudget.data.service.scheduleMidnightReset
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
+import com.example.zerotouchbudget.data.service.scheduleImageScanWorker
+
 @HiltAndroidApp
 class BudgetApplication : Application(), Configuration.Provider {
 
@@ -21,5 +23,6 @@ class BudgetApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         scheduleMidnightReset(this)
+        scheduleImageScanWorker(this)
     }
 }

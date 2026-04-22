@@ -110,6 +110,24 @@ fun HomeScreen(
         }
     }
 
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted && uiState.isAutoScanEnabled) {
+            viewModel.toggleAutoScan() // Disable if permission denied
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(uiState.isAutoScanEnabled) {
+        if (uiState.isAutoScanEnabled) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                permissionLauncher.launch(android.Manifest.permission.READ_MEDIA_IMAGES)
+            } else {
+                permissionLauncher.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

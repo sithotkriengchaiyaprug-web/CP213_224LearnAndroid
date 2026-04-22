@@ -20,17 +20,20 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
+import com.example.zerotouchbudget.data.local.AppPreferences
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val getTodayTransactionsUseCase: GetTodayTransactionsUseCase,
     private val getDailySummaryUseCase: GetDailySummaryUseCase,
     private val processReceiptImageUseCase: ProcessReceiptImageUseCase,
     private val repository: TransactionRepository,
+    private val appPreferences: AppPreferences,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(false)
-    private val _isAutoScanEnabled = MutableStateFlow(true)
+    private val _isAutoScanEnabled = MutableStateFlow(appPreferences.isAutoScanEnabled)
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -66,7 +69,9 @@ class HomeViewModel @Inject constructor(
     }
 
     fun toggleAutoScan() {
-        _isAutoScanEnabled.value = !_isAutoScanEnabled.value
+        val newState = !_isAutoScanEnabled.value
+        _isAutoScanEnabled.value = newState
+        appPreferences.isAutoScanEnabled = newState
     }
 
     fun processReceipt(bitmap: Bitmap) {
