@@ -7,7 +7,6 @@ import androidx.glance.appwidget.updateAll
 import com.example.zerotouchbudget.domain.usecase.ParseNotificationUseCase
 import com.example.zerotouchbudget.presentation.widget.BudgetWidget
 import dagger.hilt.android.AndroidEntryPoint
-import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,18 +38,13 @@ class BankNotificationService : NotificationListenerService() {
 
         serviceScope.launch {
             try {
-<<<<<<< ours
                 parseNotificationUseCase(
                     title = title,
                     text = text,
                     packageName = sbn.packageName,
                     notificationKey = sbn.key
                 )
-                BudgetWidget().updateAll(this@BankNotificationService)
-=======
-                parseNotificationUseCase(title, text, sbn.packageName)
                 BudgetWidget().updateAll(applicationContext)
->>>>>>> theirs
             } catch (e: Exception) {
                 e.printStackTrace()
             }
