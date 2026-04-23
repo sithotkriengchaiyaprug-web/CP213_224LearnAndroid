@@ -50,22 +50,12 @@ class BudgetWidget : GlanceAppWidget() {
             context, WidgetEntryPoint::class.java
         )
         val transactionRepository = entryPoint.transactionRepository()
-<<<<<<< ours
         val dailySummaryRepository = entryPoint.dailySummaryRepository()
 
         val (start, end) = DateUtils.getTodayBounds()
         val today = DateUtils.getCurrentDateString()
         val todaySpent = transactionRepository.getTotalSpentForDate(start, end)
         val budgetLimit = dailySummaryRepository.getSummaryForDate(today).first()?.budgetLimit ?: 100.0
-=======
-        val summaryRepository = entryPoint.dailySummaryRepository()
-
-        val (start, end) = DateUtils.getTodayBounds()
-        val todayDate = DateUtils.getCurrentDateString()
-        val todaySummary = summaryRepository.getSummaryForDate(todayDate).first()
-        val todaySpent = transactionRepository.getTotalSpentForDate(start, end)
-        val budgetLimit = todaySummary?.budgetLimit ?: 100.0
->>>>>>> theirs
         val remaining = budgetLimit - todaySpent
         val todayTransactions = transactionRepository.getTodayTransactions(start, end).first()
         val transactionCount = todayTransactions.size

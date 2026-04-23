@@ -8,6 +8,7 @@ data class HomeUiState(
     val totalSpentToday: Double = 0.0,
     val recentTransactions: List<Transaction> = emptyList(),
     val isLoading: Boolean = true,
+    val isProcessingReceipt: Boolean = false,
     val errorMessage: String? = null,
     val editingTransaction: Transaction? = null
 ) {

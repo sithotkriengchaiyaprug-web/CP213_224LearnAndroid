@@ -16,16 +16,8 @@ class CalculateDailySurplusUseCase @Inject constructor(
         val (start, end) = DateUtils.getDayBounds(yesterday)
 
         val totalSpent = transactionRepository.getTotalSpentForDate(start, end)
-<<<<<<< ours
         val budgetLimit = summaryRepository.getSummaryForDate(yesterday).first()?.budgetLimit ?: 100.0
         val transactionCount = transactionRepository.getTodayTransactions(start, end).first().size
-=======
-        val budgetLimit = summaryRepository
-            .getSummaryForDate(yesterday)
-            .first()
-            ?.budgetLimit
-            ?: 100.0
->>>>>>> theirs
 
         val summary = DailySummary(
             date = yesterday,

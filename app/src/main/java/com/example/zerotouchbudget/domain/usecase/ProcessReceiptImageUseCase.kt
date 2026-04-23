@@ -15,13 +15,9 @@ import com.example.zerotouchbudget.domain.repository.TransactionRepository
 import com.example.zerotouchbudget.presentation.widget.BudgetWidget
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
-<<<<<<< ours
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-=======
-import org.json.JSONException
->>>>>>> theirs
 import org.json.JSONObject
 import java.util.UUID
 import javax.inject.Inject
@@ -39,6 +35,27 @@ class ProcessReceiptImageUseCase @Inject constructor(
     }
 
     suspend operator fun invoke(bitmap: Bitmap): Result<Transaction> = runCatching {
+        val parsed = analyzeReceiptWithModel(bitmap)
+        if (parsed.amount <= 0.0) throw IllegalArgumentException("Invalid amount extracted")
+
+        val transaction = Transaction(
+            id = UUID.randomUUID().toString(),
+            amount = parsed.amount,
+            brand = parsed.brand,
+            category = "Uncategorized",
+            timestamp = System.currentTimeMillis(),
+            source = TransactionSource.OCR,
+            note = "Scanned from receipt"
+        )
+
+        repository.insertTransaction(transaction)
+        BudgetWidget().updateAll(context)
+        transaction
+    }
+
+    private suspend fun analyzeReceiptWithModel(
+        bitmap: Bitmap
+    ): ParsedReceipt {
         val prompt = """
             Analyze this receipt. Extract the total amount and the store/brand name.
             Return ONLY a valid JSON object in this exact format:
@@ -51,45 +68,10 @@ class ProcessReceiptImageUseCase @Inject constructor(
             text(prompt)
         })
 
-<<<<<<< ours
         val rawResponse = response.text ?: throw Exception("Empty response from Gemini")
-        val parsed = parseReceiptResponse(rawResponse)
-        if (parsed.amount <= 0.0) throw IllegalArgumentException("Invalid amount extracted")
-
-        val transaction = Transaction(
-            id = UUID.randomUUID().toString(),
-            amount = parsed.amount,
-            brand = parsed.brand,
-=======
-        val responseText = response.text ?: throw Exception("Empty response from Gemini")
-        val jsonObject = extractStructuredResponse(responseText)
-        val amount = jsonObject.optDouble("amount", -1.0)
-        val brand = jsonObject.optString("brand").trim()
-
-        if (amount <= 0.0) {
-            throw IllegalArgumentException("Invalid OCR amount: $amount")
-        }
-        if (brand.isEmpty()) {
-            throw IllegalArgumentException("Invalid OCR brand: empty")
-        }
-
-        val transaction = Transaction(
-            id = UUID.randomUUID().toString(),
-            amount = amount,
-            brand = brand,
->>>>>>> theirs
-            category = "Uncategorized",
-            timestamp = System.currentTimeMillis(),
-            source = TransactionSource.OCR,
-            note = "Scanned from receipt"
-        )
-
-        repository.insertTransaction(transaction)
-        BudgetWidget().updateAll(context)
-        transaction
+        return parseReceiptResponse(rawResponse)
     }
 
-<<<<<<< ours
     private suspend fun uriToBitmap(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
         val decodedBitmap = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -105,7 +87,7 @@ class ProcessReceiptImageUseCase @Inject constructor(
     }
 
     private suspend fun prepareImageForApi(bitmap: Bitmap): Bitmap = withContext(Dispatchers.Default) {
-        resizeLongestEdge(bitmap, maxLongestEdge = 1536)
+        resizeLongestEdge(bitmap, maxLongestEdge = 1024)
     }
 
     private fun resizeLongestEdge(bitmap: Bitmap, maxLongestEdge: Int): Bitmap {
@@ -205,43 +187,4 @@ class ProcessReceiptImageUseCase @Inject constructor(
         val amount: Double,
         val brand: String
     )
-=======
-    private fun extractStructuredResponse(responseText: String): JSONObject {
-        return parseJsonObject(responseText)
-            ?: parseJsonObject(
-                Regex("\\{[\\s\\S]*?}")
-                    .find(responseText)
-                    ?.value
-            )
-            ?: buildJsonFromFallbackRegex(responseText)
-            ?: throw IllegalArgumentException("Gemini response is not valid JSON: $responseText")
-    }
-
-    private fun parseJsonObject(raw: String?): JSONObject? {
-        if (raw.isNullOrBlank()) return null
-        return try {
-            JSONObject(raw.trim())
-        } catch (_: JSONException) {
-            null
-        }
-    }
-
-    private fun buildJsonFromFallbackRegex(text: String): JSONObject? {
-        val amountMatch = Regex("([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)").find(text)
-        val brandMatch = Regex("(?i)(?:brand|store|merchant)\\s*[:\\-]\\s*([A-Za-z0-9 .&'-]+)").find(text)
-
-        val amount = amountMatch?.groupValues?.getOrNull(1)
-            ?.replace(",", "")
-            ?.toDoubleOrNull()
-            ?: return null
-
-        val brand = brandMatch?.groupValues?.getOrNull(1)?.trim().orEmpty()
-        if (brand.isBlank()) return null
-
-        return JSONObject().apply {
-            put("amount", amount)
-            put("brand", brand)
-        }
-    }
->>>>>>> theirs
 }

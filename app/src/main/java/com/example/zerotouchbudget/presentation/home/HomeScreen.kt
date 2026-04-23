@@ -1,5 +1,8 @@
 package com.example.zerotouchbudget.presentation.home
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -76,9 +80,16 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+    var showScanDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var selectedTransaction by remember { mutableStateOf<Transaction?>(null) }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let(viewModel::processReceiptImage)
+    }
 
     Scaffold(
         topBar = {
@@ -102,10 +113,10 @@ fun HomeScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showAddDialog = true },
+                onClick = { showScanDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Transaction")
+                Icon(Icons.Default.Add, contentDescription = "Add or Scan Transaction")
             }
         }
     ) { paddingValues ->
@@ -150,6 +161,26 @@ fun HomeScreen(
                 )
             }
 
+            if (uiState.isProcessingReceipt) {
+                Spacer(modifier = Modifier.height(12.dp))
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Scanning receipt...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            uiState.errorMessage?.let { message ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             Row(
@@ -185,7 +216,7 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Tap + to add manually",
+                            text = "Tap + to add manually or scan a receipt",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -253,6 +284,20 @@ fun HomeScreen(
                 viewModel.deleteTransaction(selectedTransaction!!)
                 showDeleteDialog = false
                 selectedTransaction = null
+            }
+        )
+    }
+
+    if (showScanDialog) {
+        ScanActionDialog(
+            onDismiss = { showScanDialog = false },
+            onManualAdd = {
+                showScanDialog = false
+                showAddDialog = true
+            },
+            onGalleryScan = {
+                showScanDialog = false
+                galleryLauncher.launch("image/*")
             }
         )
     }
@@ -564,6 +609,54 @@ private fun DeleteConfirmDialog(
             }
         }
     )
+}
+
+@Composable
+private fun ScanActionDialog(
+    onDismiss: () -> Unit,
+    onManualAdd: () -> Unit,
+    onGalleryScan: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Add Transaction",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Choose how you want to add it.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Button(
+                    onClick = onManualAdd,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Add manually")
+                }
+
+                OutlinedButton(
+                    onClick = onGalleryScan,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Scan from gallery")
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cancel")
+                }
+            }
+        }
+    }
 }
 
 private fun formatCurrency(amount: Double): String {
