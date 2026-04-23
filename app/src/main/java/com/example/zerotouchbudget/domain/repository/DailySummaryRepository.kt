@@ -7,4 +7,5 @@ interface DailySummaryRepository {
     fun getSummaryForDate(date: String): Flow<DailySummary?>
     suspend fun saveSummary(summary: DailySummary)
     suspend fun getTotalAccumulatedSurplus(): Double
+    suspend fun updateBudgetLimit(date: String, newLimit: Double)
 }

@@ -3,8 +3,11 @@ package com.example.zerotouchbudget.data.service
 import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import androidx.glance.appwidget.updateAll
 import com.example.zerotouchbudget.domain.usecase.ParseNotificationUseCase
+import com.example.zerotouchbudget.presentation.widget.BudgetWidget
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,12 +34,23 @@ class BankNotificationService : NotificationListenerService() {
         if (sbn.packageName !in targetBanks) return
 
         val extras = sbn.notification.extras
-        val text = extras.getString(Notification.EXTRA_TEXT) ?: return
-        val title = extras.getString(Notification.EXTRA_TITLE) ?: ""
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: return
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
 
         serviceScope.launch {
             try {
+<<<<<<< ours
+                parseNotificationUseCase(
+                    title = title,
+                    text = text,
+                    packageName = sbn.packageName,
+                    notificationKey = sbn.key
+                )
+                BudgetWidget().updateAll(this@BankNotificationService)
+=======
                 parseNotificationUseCase(title, text, sbn.packageName)
+                BudgetWidget().updateAll(applicationContext)
+>>>>>>> theirs
             } catch (e: Exception) {
                 e.printStackTrace()
             }

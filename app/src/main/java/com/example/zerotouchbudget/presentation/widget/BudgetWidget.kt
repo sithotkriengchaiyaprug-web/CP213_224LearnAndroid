@@ -1,7 +1,6 @@
 package com.example.zerotouchbudget.presentation.widget
 
 import android.content.Context
-import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -14,7 +13,6 @@ import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.provideContent
-import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
@@ -51,13 +49,25 @@ class BudgetWidget : GlanceAppWidget() {
         val entryPoint = EntryPointAccessors.fromApplication(
             context, WidgetEntryPoint::class.java
         )
-        val repository = entryPoint.transactionRepository()
+        val transactionRepository = entryPoint.transactionRepository()
+<<<<<<< ours
+        val dailySummaryRepository = entryPoint.dailySummaryRepository()
 
         val (start, end) = DateUtils.getTodayBounds()
-        val todaySpent = repository.getTotalSpentForDate(start, end)
-        val budgetLimit = 100.0
+        val today = DateUtils.getCurrentDateString()
+        val todaySpent = transactionRepository.getTotalSpentForDate(start, end)
+        val budgetLimit = dailySummaryRepository.getSummaryForDate(today).first()?.budgetLimit ?: 100.0
+=======
+        val summaryRepository = entryPoint.dailySummaryRepository()
+
+        val (start, end) = DateUtils.getTodayBounds()
+        val todayDate = DateUtils.getCurrentDateString()
+        val todaySummary = summaryRepository.getSummaryForDate(todayDate).first()
+        val todaySpent = transactionRepository.getTotalSpentForDate(start, end)
+        val budgetLimit = todaySummary?.budgetLimit ?: 100.0
+>>>>>>> theirs
         val remaining = budgetLimit - todaySpent
-        val todayTransactions = repository.getTodayTransactions(start, end).first()
+        val todayTransactions = transactionRepository.getTodayTransactions(start, end).first()
         val transactionCount = todayTransactions.size
         val spentPercentage = if (budgetLimit > 0) (todaySpent / budgetLimit).toFloat().coerceIn(0f, 1f) else 0f
 

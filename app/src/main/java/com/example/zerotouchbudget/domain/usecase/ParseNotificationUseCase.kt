@@ -9,19 +9,24 @@ import javax.inject.Inject
 class ParseNotificationUseCase @Inject constructor(
     private val repository: TransactionRepository
 ) {
-    suspend operator fun invoke(title: String, text: String, packageName: String) {
+    suspend operator fun invoke(
+        title: String,
+        text: String,
+        packageName: String,
+        notificationKey: String? = null
+    ) {
         val amount = extractAmount(text)
         if (amount == null) return
         val brand = extractBrand(text, title)
 
         val transaction = Transaction(
-            id = UUID.randomUUID().toString(),
+            id = notificationKey?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),
             amount = amount,
             brand = brand,
             category = "Uncategorized",
             timestamp = System.currentTimeMillis(),
             source = TransactionSource.NOTIFICATION,
-            note = "Auto-detected from " + packageName
+            note = "Auto-detected from $packageName"
         )
 
         repository.insertTransaction(transaction)

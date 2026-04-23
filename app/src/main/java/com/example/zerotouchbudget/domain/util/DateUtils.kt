@@ -6,15 +6,15 @@ import java.util.Locale
 
 object DateUtils {
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-
     fun getCurrentDateString(): String {
-        return dateFormat.format(Calendar.getInstance().time)
+        return newDateFormat().format(Calendar.getInstance().time)
     }
 
     fun getDayBounds(dateString: String): Pair<Long, Long> {
+        val parsedDate = newDateFormat().parse(dateString)
+            ?: throw IllegalArgumentException("Invalid date format: $dateString")
         val calendar = Calendar.getInstance().apply {
-            time = dateFormat.parse(dateString)!!
+            time = parsedDate
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
@@ -32,6 +32,10 @@ object DateUtils {
         val calendar = Calendar.getInstance().apply {
             add(Calendar.DAY_OF_MONTH, -1)
         }
-        return dateFormat.format(calendar.time)
+        return newDateFormat().format(calendar.time)
+    }
+
+    private fun newDateFormat(): SimpleDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        isLenient = false
     }
 }
