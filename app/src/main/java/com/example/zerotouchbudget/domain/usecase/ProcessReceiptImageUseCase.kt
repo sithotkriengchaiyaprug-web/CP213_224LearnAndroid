@@ -35,20 +35,7 @@ class ProcessReceiptImageUseCase @Inject constructor(
     }
 
     suspend operator fun invoke(bitmap: Bitmap): Result<Transaction> = runCatching {
-        val prompt = """
-            Analyze this receipt. Extract the total amount and the store/brand name.
-            Return ONLY a valid JSON object in this exact format:
-            {"amount": 150.50, "brand": "Starbucks"}
-            Do not include markdown formatting, backticks, or any other text.
-        """.trimIndent()
-
-        val response = generativeModel.generateContent(content {
-            image(bitmap)
-            text(prompt)
-        })
-
-        val rawResponse = response.text ?: throw Exception("Empty response from Gemini")
-        val parsed = parseReceiptResponse(rawResponse)
+        val parsed = analyzeReceiptWithModel(bitmap)
         if (parsed.amount <= 0.0) throw IllegalArgumentException("Invalid amount extracted")
 
         val transaction = Transaction(
@@ -66,6 +53,25 @@ class ProcessReceiptImageUseCase @Inject constructor(
         transaction
     }
 
+    private suspend fun analyzeReceiptWithModel(
+        bitmap: Bitmap
+    ): ParsedReceipt {
+        val prompt = """
+            Analyze this receipt. Extract the total amount and the store/brand name.
+            Return ONLY a valid JSON object in this exact format:
+            {"amount": 150.50, "brand": "Starbucks"}
+            Do not include markdown formatting, backticks, or any other text.
+        """.trimIndent()
+
+        val response = generativeModel.generateContent(content {
+            image(bitmap)
+            text(prompt)
+        })
+
+        val rawResponse = response.text ?: throw Exception("Empty response from Gemini")
+        return parseReceiptResponse(rawResponse)
+    }
+
     private suspend fun uriToBitmap(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
         val decodedBitmap = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -81,7 +87,7 @@ class ProcessReceiptImageUseCase @Inject constructor(
     }
 
     private suspend fun prepareImageForApi(bitmap: Bitmap): Bitmap = withContext(Dispatchers.Default) {
-        resizeLongestEdge(bitmap, maxLongestEdge = 1536)
+        resizeLongestEdge(bitmap, maxLongestEdge = 1024)
     }
 
     private fun resizeLongestEdge(bitmap: Bitmap, maxLongestEdge: Int): Bitmap {

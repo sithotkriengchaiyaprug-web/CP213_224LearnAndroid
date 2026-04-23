@@ -2,8 +2,11 @@ package com.example.zerotouchbudget.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.zerotouchbudget.data.local.BudgetDatabase
 import com.example.zerotouchbudget.data.local.dao.DailySummaryDao
+import com.example.zerotouchbudget.data.local.dao.ProcessedReceiptImageDao
 import com.example.zerotouchbudget.data.local.dao.TransactionDao
 import dagger.Module
 import dagger.Provides
@@ -25,7 +28,8 @@ object DatabaseModule {
             context,
             BudgetDatabase::class.java,
             "budget_database"
-        ).build()
+        ).addMigrations(MIGRATION_1_2)
+            .build()
     }
 
     @Provides
@@ -35,4 +39,28 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDailySummaryDao(db: BudgetDatabase): DailySummaryDao = db.dailySummaryDao()
+
+    @Provides
+    @Singleton
+    fun provideProcessedReceiptImageDao(db: BudgetDatabase): ProcessedReceiptImageDao =
+        db.processedReceiptImageDao()
+
+    private val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `processed_receipt_images` (
+                    `imageUri` TEXT NOT NULL,
+                    `displayName` TEXT NOT NULL,
+                    `relativePath` TEXT NOT NULL,
+                    `folderName` TEXT NOT NULL,
+                    `processedAtMillis` INTEGER NOT NULL,
+                    `ocrPassed` INTEGER NOT NULL,
+                    `aiProcessed` INTEGER NOT NULL,
+                    PRIMARY KEY(`imageUri`)
+                )
+                """.trimIndent()
+            )
+        }
+    }
 }

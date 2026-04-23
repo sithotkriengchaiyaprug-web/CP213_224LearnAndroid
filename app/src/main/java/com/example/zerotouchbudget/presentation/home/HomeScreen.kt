@@ -1,6 +1,5 @@
 package com.example.zerotouchbudget.presentation.home
 
-import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,15 +50,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.core.content.FileProvider
 import com.example.zerotouchbudget.domain.model.Transaction
-import java.io.File
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,29 +78,17 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
     onSettingsClick: () -> Unit = {}
 ) {
-    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var showScanDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var selectedTransaction by remember { mutableStateOf<Transaction?>(null) }
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let(viewModel::processReceiptImage)
-    }
-
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        val uri = pendingCameraUri
-        pendingCameraUri = null
-        if (success && uri != null) {
-            viewModel.processReceiptImage(uri)
-        }
     }
 
     Scaffold(
@@ -314,12 +298,6 @@ fun HomeScreen(
             onGalleryScan = {
                 showScanDialog = false
                 galleryLauncher.launch("image/*")
-            },
-            onCameraScan = {
-                showScanDialog = false
-                val imageUri = createCameraImageUri(context)
-                pendingCameraUri = imageUri
-                cameraLauncher.launch(imageUri)
             }
         )
     }
@@ -637,8 +615,7 @@ private fun DeleteConfirmDialog(
 private fun ScanActionDialog(
     onDismiss: () -> Unit,
     onManualAdd: () -> Unit,
-    onGalleryScan: () -> Unit,
-    onCameraScan: () -> Unit
+    onGalleryScan: () -> Unit
 ) {
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Card {
@@ -671,13 +648,6 @@ private fun ScanActionDialog(
                     Text("Scan from gallery")
                 }
 
-                OutlinedButton(
-                    onClick = onCameraScan,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Scan from camera")
-                }
-
                 TextButton(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth()
@@ -702,20 +672,4 @@ private fun formatTime(timestamp: Long): String {
 private fun getCurrentDateFormatted(): String {
     val sdf = SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault())
     return sdf.format(Date())
-}
-
-private fun createCameraImageUri(context: Context): Uri {
-    val imagesDir = File(context.cacheDir, "receipt_images").apply {
-        mkdirs()
-    }
-    val imageFile = File.createTempFile(
-        "receipt_${System.currentTimeMillis()}_",
-        ".jpg",
-        imagesDir
-    )
-    return FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        imageFile
-    )
 }
