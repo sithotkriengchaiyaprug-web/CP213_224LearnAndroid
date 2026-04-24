@@ -22,9 +22,6 @@ class BudgetApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
-            com.google.firebase.FirebaseApp.initializeApp(this)
-        }
         scheduleMidnightReset(this)
         scheduleImageScanWorker(this)
     }

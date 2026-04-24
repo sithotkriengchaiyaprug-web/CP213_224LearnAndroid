@@ -20,9 +20,6 @@ class ImageScanWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        if (com.google.firebase.FirebaseApp.getApps(applicationContext).isEmpty()) {
-            com.google.firebase.FirebaseApp.initializeApp(applicationContext)
-        }
 
         if (!appPreferences.isAutoScanEnabled) {
             Log.d(TAG, "Auto scan is disabled. Skipping work.")

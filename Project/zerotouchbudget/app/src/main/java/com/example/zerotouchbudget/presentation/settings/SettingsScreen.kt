@@ -3,12 +3,14 @@ package com.example.zerotouchbudget.presentation.settings
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -81,7 +83,7 @@ fun SettingsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (isAutoScanEnabled) "Listening for bank slips" else "Scanning is paused",
+                            text = if (isAutoScanEnabled) "ระบบทำงานอัตโนมัติเมื่อมีสลิปโอนเงิน (Zero-Touch)" else "Scanning is paused",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -89,6 +91,19 @@ fun SettingsScreen(
                         checked = isAutoScanEnabled,
                         onCheckedChange = { viewModel.toggleAutoScan(it) }
                     )
+                }
+                
+                // ปุ่ม Sync ย้อนหลัง
+                if (isAutoScanEnabled) {
+                    Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                    TextButton(
+                        onClick = { viewModel.scanExistingImages() },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = "Sync", modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("ดึงสลิปย้อนหลัง (Sync History)")
+                    }
                 }
             }
 
@@ -188,11 +203,33 @@ fun SettingsScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Zero-Touch Budget v1.0", fontWeight = FontWeight.Bold)
+                    Text("Zero-Touch Budget v1.1.0", fontWeight = FontWeight.Bold)
                     Text(
-                        "Automatically tracks your spending from bank notifications and receipts using AI.",
+                        "Smart Realtime Scan + AI Deduplication",
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
+            }
+        }
+
+        val isLoading by viewModel.isLoading.collectAsState()
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.3f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("กำลังซิงค์และสแกนสลิปย้อนหลัง...", fontWeight = FontWeight.Medium)
+                    }
                 }
             }
         }

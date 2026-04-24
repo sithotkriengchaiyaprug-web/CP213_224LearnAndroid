@@ -16,17 +16,25 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+import com.example.zerotouchbudget.data.local.AppPreferences
+import com.example.zerotouchbudget.data.service.scanner.SmartReceiptScanner
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val summaryRepository: DailySummaryRepository,
+    private val appPreferences: AppPreferences,
+    private val smartScanner: SmartReceiptScanner,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _currentBudget = MutableStateFlow(100.0)
     val currentBudget: StateFlow<Double> = _currentBudget.asStateFlow()
 
-    private val _isAutoScanEnabled = MutableStateFlow(true)
+    private val _isAutoScanEnabled = MutableStateFlow(appPreferences.isAutoScanEnabled)
     val isAutoScanEnabled: StateFlow<Boolean> = _isAutoScanEnabled.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     init {
         loadCurrentBudget()
@@ -53,6 +61,25 @@ class SettingsViewModel @Inject constructor(
 
     fun toggleAutoScan(enabled: Boolean) {
         _isAutoScanEnabled.value = enabled
-        // TODO: Save to DataStore/SharedPreferences if needed
+        appPreferences.isAutoScanEnabled = enabled
+    }
+
+    fun scanExistingImages() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                // คำนวณเวลาย้อนหลัง 7 วัน (แปลงเป็น Milliseconds)
+                val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
+                
+                // สั่งสแกนรูปเก่าๆ ทั้งหมด (limit = 200 รูป)
+                smartScanner.scan(limit = 200, sinceTimestamp = sevenDaysAgo)
+                
+                BudgetWidget().updateAll(context)
+            } catch (e: Exception) {
+                // Error handling
+            } finally {
+                _isLoading.value = false
+            }
+        }
     }
 }
