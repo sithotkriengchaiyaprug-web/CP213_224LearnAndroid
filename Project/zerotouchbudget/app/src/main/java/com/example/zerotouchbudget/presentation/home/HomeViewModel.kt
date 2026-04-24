@@ -21,12 +21,14 @@ import java.util.UUID
 import javax.inject.Inject
 
 import com.example.zerotouchbudget.data.local.AppPreferences
+import com.example.zerotouchbudget.data.service.scanner.SmartReceiptScanner
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val getTodayTransactionsUseCase: GetTodayTransactionsUseCase,
     private val getDailySummaryUseCase: GetDailySummaryUseCase,
     private val processReceiptImageUseCase: ProcessReceiptImageUseCase,
+    private val smartScanner: SmartReceiptScanner,
     private val repository: TransactionRepository,
     private val appPreferences: AppPreferences,
     @ApplicationContext private val context: Context
@@ -74,16 +76,19 @@ class HomeViewModel @Inject constructor(
         appPreferences.isAutoScanEnabled = newState
     }
 
-    fun processReceipt(bitmap: Bitmap) {
+    fun scanExistingImages() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val result = processReceiptImageUseCase(bitmap)
-                if (result.isSuccess) {
-                    updateWidget()
-                }
+                // คำนวณเวลาย้อนหลัง 7 วัน (แปลงเป็น Milliseconds)
+                val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
+                
+                // สั่งสแกนรูปเก่าๆ ทั้งหมด (limit = 200 รูป)
+                smartScanner.scan(limit = 200, sinceTimestamp = sevenDaysAgo)
+                
+                updateWidget()
             } catch (e: Exception) {
-                // Error handling can be added to UI state
+                // Error handling
             } finally {
                 _isLoading.value = false
             }

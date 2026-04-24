@@ -35,4 +35,8 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDailySummaryDao(db: BudgetDatabase): DailySummaryDao = db.dailySummaryDao()
+
+    @Provides
+    @Singleton
+    fun provideProcessedReceiptDao(db: BudgetDatabase): com.example.zerotouchbudget.data.local.dao.ProcessedReceiptDao = db.processedReceiptDao()
 }

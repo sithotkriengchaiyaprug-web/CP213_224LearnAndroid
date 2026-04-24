@@ -27,6 +27,13 @@ class BankNotificationService : NotificationListenerService() {
         "th.co.krungthai.next"
     )
 
+    override fun onCreate() {
+        super.onCreate()
+        if (com.google.firebase.FirebaseApp.getApps(applicationContext).isEmpty()) {
+            com.google.firebase.FirebaseApp.initializeApp(applicationContext)
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName !in targetBanks) return
 

@@ -98,6 +98,9 @@ dependencies {
     // Gemini AI
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
 
+    // ML Kit Text Recognition
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("io.mockk:mockk:1.13.13")

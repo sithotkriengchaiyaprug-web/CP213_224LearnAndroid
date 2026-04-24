@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -95,21 +96,6 @@ fun HomeScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var selectedTransaction by remember { mutableStateOf<Transaction?>(null) }
 
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let {
-            val bitmap = if (Build.VERSION.SDK_INT < 28) {
-                @Suppress("DEPRECATION")
-                MediaStore.Images.Media.getBitmap(context.contentResolver, it)
-            } else {
-                val source = ImageDecoder.createSource(context.contentResolver, it)
-                ImageDecoder.decodeBitmap(source)
-            }
-            viewModel.processReceipt(bitmap.copy(Bitmap.Config.ARGB_8888, true))
-        }
-    }
-
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -154,11 +140,11 @@ fun HomeScreen(
         floatingActionButton = {
             Column(horizontalAlignment = Alignment.End) {
                 FloatingActionButton(
-                    onClick = { launcher.launch("image/*") },
+                    onClick = { viewModel.scanExistingImages() },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     modifier = Modifier.padding(bottom = 8.dp)
                 ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = "Scan Receipt")
+                    Icon(Icons.Default.Sync, contentDescription = "Sync Old Receipts")
                 }
                 
                 FloatingActionButton(
