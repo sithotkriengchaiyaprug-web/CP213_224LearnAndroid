@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -103,6 +104,15 @@ fun SettingsScreen(
                         Icon(Icons.Default.Sync, contentDescription = "Sync", modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("ดึงสลิปย้อนหลัง (Sync History)")
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                    TextButton(
+                        onClick = { viewModel.forceRescan() },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Force Rescan", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("สแกนใหม่ทั้งหมด (Force Rescan)", color = MaterialTheme.colorScheme.error)
                     }
                 }
             }

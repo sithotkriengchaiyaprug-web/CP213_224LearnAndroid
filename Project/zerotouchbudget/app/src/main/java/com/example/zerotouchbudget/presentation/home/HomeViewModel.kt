@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -48,39 +50,37 @@ class HomeViewModel @Inject constructor(
 
     val uiState: StateFlow<HomeUiState> = combine(
         getDailySummaryUseCase(todayDate)
+            .distinctUntilChanged()
             .catch { throwable ->
                 Log.e(TAG, "Daily summary flow failed", throwable)
                 emit(null)
             },
         getTodayTransactionsUseCase(todayDate)
+            .distinctUntilChanged()
             .catch { throwable ->
                 Log.e(TAG, "Transaction flow failed", throwable)
-                emit(emptyList())
+                emit(emptyList<Transaction>())
             },
         _isLoading,
         _isAutoScanEnabled,
         _errorMessage
-    ) { summary, transactions, loading, autoScan, errorMessage ->
-        val totalSpent = transactions.sumOf { it.amount }
-        val budgetLimit = summary?.budgetLimit ?: 100.0
-        val remaining = budgetLimit - totalSpent
-
-        Log.d(
-            TAG,
-            "UI state recalculated: count=${transactions.size}, totalSpent=$totalSpent, " +
-                "remaining=$remaining, loading=$loading"
-        )
-
+    ) { summary, transactions, isLoading, autoScanEnabled, error ->
+        val limit = summary?.budgetLimit ?: 100.0
+        val totalSpent = summary?.totalSpent ?: transactions.sumOf { it.amount }
+        val remaining = summary?.surplus ?: (limit - totalSpent)
+        
         HomeUiState(
             remainingBudget = remaining,
-            dailyBudgetLimit = budgetLimit,
             totalSpentToday = totalSpent,
             recentTransactions = transactions,
-            isLoading = loading,
-            errorMessage = errorMessage,
-            isAutoScanEnabled = autoScan
+            isLoading = isLoading,
+            isAutoScanEnabled = autoScanEnabled,
+            errorMessage = error,
+            dailyBudgetLimit = limit
         )
-    }.stateIn(
+    }
+    .flowOn(kotlinx.coroutines.Dispatchers.Default)
+    .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = HomeUiState(
@@ -103,10 +103,16 @@ class HomeViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
-                withContext(Dispatchers.IO) {
-                    smartScanner.scan(limit = 200, sinceTimestamp = sevenDaysAgo, forceRescan = true)
+                val summary = withContext(Dispatchers.IO) {
+                    smartScanner.scan(limit = 50, sinceTimestamp = sevenDaysAgo, forceRescan = false)
                 }
                 updateWidget()
+                
+                val msg = "Found:${summary.totalFound} Dup:${summary.skippedDedup} OCR:${summary.failedOcr} AI:${summary.failedAi} ✅${summary.success}"
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
+                
                 Log.d(TAG, "scanExistingImages() completed successfully")
             } catch (e: Exception) {
                 Log.e(TAG, "scanExistingImages() failed", e)

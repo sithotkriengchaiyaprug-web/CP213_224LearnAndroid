@@ -71,10 +71,38 @@ class SettingsViewModel @Inject constructor(
                 // คำนวณเวลาย้อนหลัง 7 วัน (แปลงเป็น Milliseconds)
                 val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
                 
-                // สั่งสแกนรูปเก่าๆ ทั้งหมด (limit = 200 รูป)
-                smartScanner.scan(limit = 200, sinceTimestamp = sevenDaysAgo)
+                // สั่งสแกนรูปเก่าๆ ทั้งหมด (limit = 50 รูป)
+                val summary = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    smartScanner.scan(limit = 50, sinceTimestamp = sevenDaysAgo, forceRescan = false)
+                }
                 
                 BudgetWidget().updateAll(context)
+                
+                val msg = "Found:${summary.totalFound} Dup:${summary.skippedDedup} OCR:${summary.failedOcr} AI:${summary.failedAi} ✅${summary.success}"
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                // Error handling
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun forceRescan() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
+                val summary = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    smartScanner.scan(limit = 50, sinceTimestamp = sevenDaysAgo, forceRescan = true)
+                }
+                BudgetWidget().updateAll(context)
+                val msg = "Force: Found:${summary.totalFound} NotSlip:${summary.failedOcr} ErrAI:${summary.failedAi} ✅${summary.success}"
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
             } catch (e: Exception) {
                 // Error handling
             } finally {

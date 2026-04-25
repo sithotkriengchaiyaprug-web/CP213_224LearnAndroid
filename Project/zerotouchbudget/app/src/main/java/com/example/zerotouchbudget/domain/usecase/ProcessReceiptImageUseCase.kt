@@ -15,6 +15,9 @@ import org.json.JSONObject
 import java.util.UUID
 import javax.inject.Inject
 
+/** Thrown when the image is not a receipt (AI returned amount=0 or invalid) */
+class NotAReceiptException(reason: String) : Exception("Not a receipt: $reason")
+
 class ProcessReceiptImageUseCase @Inject constructor(
     private val generativeModel: GenerativeModel,
     private val repository: TransactionRepository
@@ -30,7 +33,12 @@ class ProcessReceiptImageUseCase @Inject constructor(
             val resizedBitmap = resizeBitmap(bitmap, MAX_IMAGE_WIDTH)
             Log.d(TAG, "Bitmap ready for Gemini: ${resizedBitmap.width}x${resizedBitmap.height}")
 
-            val response = callGeminiWithTimeout(resizedBitmap, buildOptimizedPrompt())
+            val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("Asia/Bangkok")
+            }
+            val currentDate = format.format(java.util.Date())
+
+            val response = callGeminiWithTimeout(resizedBitmap, buildOptimizedPrompt(currentDate))
             val rawText = response.text?.trim().orEmpty()
 
             Log.d(TAG, "AI raw response: $rawText")
@@ -45,21 +53,30 @@ class ProcessReceiptImageUseCase @Inject constructor(
                     "confidence=${extracted.confidence}, parser=${extracted.parserMode}"
             )
 
-            if (extracted.amount <= 0.0) {
-                throw IllegalStateException(
-                    "Invalid amount extracted from AI response. " +
-                        "Fallback parsing also failed. rawResponseLength=${rawText.length}"
-                )
+            val safeBrand = extracted.brand.ifBlank { "Unknown" }
+
+            if (extracted.amount <= 0.0 || extracted.amount > 1_000_000.0) {
+                // ไม่ใช่สลิป หรือ AI อ่านยอดไม่ได้ → silent failure
+                throw NotAReceiptException("amount=${extracted.amount}")
+            }
+
+            val baseNote = "Scanned via Gemini AI (confidence=${extracted.confidence}, parser=${extracted.parserMode})"
+            var finalNote = if (extracted.needsReview) "[รอ user ยืนยัน] $baseNote" else baseNote
+            if (extracted.isTimeMissing) {
+                finalNote += " (เวลาบนสลิปไม่ชัดเจน)"
+            }
+            if (extracted.isDateMissing) {
+                finalNote += " (วันที่และเวลาไม่ชัดเจน ใช้เวลาสแกนแทน)"
             }
 
             val transaction = Transaction(
                 id = UUID.randomUUID().toString(),
                 amount = extracted.amount,
-                brand = extracted.brand,
-                category = mapCategory(extracted.brand),
-                timestamp = System.currentTimeMillis(),
+                brand = safeBrand,
+                category = mapCategory(safeBrand),
+                timestamp = extracted.timestamp ?: com.example.zerotouchbudget.domain.util.DateUtils.nowUtcMillis(),
                 source = TransactionSource.OCR,
-                note = "Scanned via Gemini AI (confidence=${extracted.confidence}, parser=${extracted.parserMode})"
+                note = finalNote
             )
 
             Log.d(
@@ -89,17 +106,58 @@ class ProcessReceiptImageUseCase @Inject constructor(
         )
     } ?: throw IllegalStateException("Gemini API timeout after ${TIMEOUT_MS / 1000} seconds")
 
-    private fun buildOptimizedPrompt(): String = """
-        You are a receipt OCR extraction system.
-        Return ONLY valid JSON with this exact schema:
-        {"amount": number, "brand": "string", "confidence": "high|medium|low"}
-
+    private fun buildOptimizedPrompt(currentDate: String): String = """
+        You are a Thai bank transfer slip reader. 
+        Extract structured data from this slip image and return ONLY valid JSON. 
+        No explanation. No markdown. No extra text.
+        
         Rules:
-        - amount must be the final payable total
-        - brand should be the merchant/store/bank name
-        - if amount is unclear, return 0.0
-        - if brand is unclear, return "Unknown"
-        - no markdown, no code fences, no extra text
+        - Today's date is $currentDate (use this to resolve ambiguous years)
+        - Always return date in format: "YYYY-MM-DD" and time in "HH:mm" (24-hour, Asia/Bangkok timezone)
+        - Convert Buddhist Era (พ.ศ.) to Christian Era (ค.ศ.) by subtracting 543
+          Example: "25 เม.ย. 69" → date: "2026-04-25"
+        - Map Thai month abbreviations:
+          ม.ค.=01, ก.พ.=02, มี.ค.=03, เม.ย.=04, พ.ค.=05, มิ.ย.=06,
+          ก.ค.=07, ส.ค.=08, ก.ย.=09, ต.ค.=10, พ.ย.=11, ธ.ค.=12
+        - amount and fee must be numbers (not strings)
+        - If date or time is unreadable, return null (do NOT guess)
+        - If a field is unreadable or missing, use null
+        - Do NOT guess or fill in missing data
+        - status must be one of: "success" | "pending" | "failed" | "unknown"
+        - bank must be one of: 
+          "KBANK" | "SCB" | "KTB" | "BBL" | "BAY" | "TTB" | "GSB" | 
+          "BAAC" | "CIMB" | "UOB" | "LH" | "TISCO" | "unknown"
+        - channel must be one of: 
+          "PromptPay" | "account_number" | "mobile" | "unknown"
+        - transaction_type must be one of: "merchant" | "p2p" | "bill" | "unknown"
+        
+        Return this exact JSON structure:
+        {
+          "is_slip": true,
+          "confidence": 0.97,
+          "status": "success",
+          "transaction_type": "merchant",
+          "brand_name": "ร้านกาแฟนาย ก",
+          "bank": "KBANK",
+          "date": "2026-04-25",
+          "time": "16:15",
+          "sender_name": "นาย ก. ข.",
+          "sender_account": "xxx-x-xxxx-x",
+          "receiver_name": "ก. ข. ค.",
+          "receiver_channel": "PromptPay",
+          "receiver_account": "xxx-xxxxxxxx-xxxx",
+          "ref_number": "XXXXXXXXXXXXXXXXXX",
+          "amount": 50.00,
+          "fee": 0.00,
+          "currency": "THB",
+          "note": null
+        }
+        
+        If this image is NOT a bank slip at all, return:
+        {
+          "is_slip": false,
+          "confidence": 0.95
+        }
     """.trimIndent()
 
     private fun parseReceiptData(rawText: String): ReceiptExtractionData {
@@ -194,32 +252,83 @@ class ProcessReceiptImageUseCase @Inject constructor(
     }
 
     private fun extractFromJson(json: JSONObject, parserMode: String): ReceiptExtractionData {
+        if (json.has("is_slip") && !json.optBoolean("is_slip", true)) {
+            Log.w(TAG, "Gemini determined this is NOT a bank slip.")
+            throw IllegalStateException("Image is not a bank slip (is_slip: false)")
+        }
+
         val amount = readAmount(
             json.opt("amount"),
-            json.opt("total"),
-            json.opt("grand_total"),
-            json.opt("value"),
-            json.opt("transactionAmount"),
-            json.opt("finalAmount")
+            json.opt("total")
         )
-        val brand = readString(
-            json.opt("brand"),
-            json.opt("merchant"),
-            json.opt("store"),
-            json.opt("merchant_name"),
-            json.opt("name"),
-            json.opt("vendor")
-        )
-        val confidence = readString(
-            json.opt("confidence"),
-            json.opt("score")
-        ).let(::normalizeConfidence)
+        
+        val transactionType = json.optString("transaction_type", "unknown").lowercase()
+        val brandName = json.optString("brand_name", "")
+        val receiverName = json.optString("receiver_name", "")
+        val bank = json.optString("bank", "")
+        
+        val rawBrand = when (transactionType) {
+            "merchant" -> brandName.ifBlank { receiverName }.ifBlank { bank }
+            "p2p" -> if (receiverName.isNotBlank()) "$receiverName (โอน)" else bank
+            "bill" -> if (receiverName.isNotBlank()) "$receiverName (บิล)" else bank
+            else -> receiverName.ifBlank { brandName }.ifBlank { bank }
+        }
+        
+        val confValue = json.optDouble("confidence", 1.0)
+        val needsReview = confValue < 0.7
+        val confidenceStr = if (needsReview) "low" else "high"
+
+        var parsedTimestamp: Long? = null
+        var isDateMissing = false
+        var isTimeMissing = false
+        
+        var dateStr = json.optString("date", "")
+        if (dateStr.isNotBlank() && dateStr != "null") {
+            val parts = dateStr.split("-")
+            if (parts.size == 3) {
+                val year = parts[0].toIntOrNull() ?: 0
+                if (year > 2500) {
+                    val newYear = year - 543
+                    dateStr = "$newYear-${parts[1]}-${parts[2]}"
+                }
+            }
+        }
+        var timeStr = json.optString("time", "")
+
+        if (dateStr.isNotBlank() && dateStr != "null") {
+            try {
+                var localDate = java.time.LocalDate.parse(dateStr, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                if (timeStr == "24:00") {
+                    localDate = localDate.plusDays(1)
+                    timeStr = "00:00"
+                }
+                
+                if (timeStr.isNotBlank() && timeStr != "null") {
+                    val localTime = java.time.LocalTime.parse(timeStr, java.time.format.DateTimeFormatter.ISO_LOCAL_TIME)
+                    parsedTimestamp = java.time.ZonedDateTime.of(localDate, localTime, com.example.zerotouchbudget.domain.util.DateUtils.bangkokZone)
+                        .toInstant().toEpochMilli()
+                } else {
+                    parsedTimestamp = localDate.atStartOfDay(com.example.zerotouchbudget.domain.util.DateUtils.bangkokZone)
+                        .toInstant().toEpochMilli()
+                    isTimeMissing = true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse date/time using java.time: $dateStr $timeStr", e)
+                isDateMissing = true
+            }
+        } else {
+            isDateMissing = true
+        }
 
         return ReceiptExtractionData(
             amount = amount,
-            brand = normalizeBrand(brand),
-            confidence = confidence,
-            parserMode = parserMode
+            brand = normalizeBrand(rawBrand),
+            confidence = confidenceStr,
+            parserMode = parserMode,
+            needsReview = needsReview,
+            timestamp = parsedTimestamp,
+            isDateMissing = isDateMissing,
+            isTimeMissing = isTimeMissing
         )
     }
 
@@ -355,7 +464,11 @@ class ProcessReceiptImageUseCase @Inject constructor(
         val amount: Double,
         val brand: String,
         val confidence: String,
-        val parserMode: String
+        val parserMode: String,
+        val needsReview: Boolean = false,
+        val timestamp: Long? = null,
+        val isDateMissing: Boolean = false,
+        val isTimeMissing: Boolean = false
     )
 
     companion object {

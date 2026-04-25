@@ -13,4 +13,7 @@ interface ProcessedReceiptDao {
 
     @Query("SELECT EXISTS(SELECT 1 FROM processed_receipts WHERE imageUri = :uri)")
     suspend fun isAlreadyProcessed(uri: String): Boolean
+
+    @Query("DELETE FROM processed_receipts")
+    suspend fun clearAll()
 }
