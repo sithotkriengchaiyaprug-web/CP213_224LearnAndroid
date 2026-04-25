@@ -135,6 +135,24 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun processImage(bitmap: android.graphics.Bitmap) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val result = processReceiptImageUseCase(bitmap)
+                if (result.isSuccess) {
+                    updateWidget()
+                } else {
+                    // Could expose an error state if needed
+                }
+            } catch (e: Exception) {
+                // Error handling
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     private suspend fun updateWidget() {
         BudgetWidget().updateAll(context)
     }

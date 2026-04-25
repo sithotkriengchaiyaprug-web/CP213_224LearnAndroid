@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface TransactionRepository {
     fun getTodayTransactions(startOfDay: Long, endOfDay: Long): Flow<List<Transaction>>
+    fun getTransactionsBetween(start: Long, end: Long): Flow<List<Transaction>>
     suspend fun insertTransaction(transaction: Transaction)
     suspend fun getTotalSpentForDate(startOfDay: Long, endOfDay: Long): Double
     suspend fun deleteTransaction(transaction: Transaction)

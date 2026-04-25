@@ -34,4 +34,28 @@ object DateUtils {
         }
         return dateFormat.format(calendar.time)
     }
+
+    fun getCurrentMonthBounds(): Pair<Long, Long> {
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val startOfMonth = calendar.timeInMillis
+        calendar.add(Calendar.MONTH, 1)
+        val endOfMonth = calendar.timeInMillis
+        return startOfMonth to endOfMonth
+    }
+
+    fun formatToDayString(timestamp: Long): String {
+        val sdf = SimpleDateFormat("MMMM d, yyyy", Locale.US)
+        return sdf.format(java.util.Date(timestamp))
+    }
+
+    fun getCurrentMonthString(): String {
+        val sdf = SimpleDateFormat("MMMM yyyy", Locale.US)
+        return sdf.format(Calendar.getInstance().time)
+    }
 }
