@@ -47,35 +47,35 @@ class SmartReceiptScanner @Inject constructor(
     // Concurrency Control: ป้องกัน OOM และ CPU ร้อน
     private val scanDispatcher = Dispatchers.IO.limitedParallelism(2)
 
-    suspend fun scan(limit: Int = 100, sinceTimestamp: Long = 0) = withContext(scanDispatcher) {
-        Log.d(TAG, "Starting scan limit=$limit since=$sinceTimestamp")
+    suspend fun scan(limit: Int = 100, sinceTimestamp: Long = 0, forceRescan: Boolean = false) = withContext(scanDispatcher) {
+        Log.d(TAG, "Starting scan limit=$limit since=$sinceTimestamp forceRescan=$forceRescan")
         val images = queryMediaStore(limit, sinceTimestamp)
         
         images.map { image ->
             async {
-                // Deduplication Check
-                if (receiptDao.isAlreadyProcessed(image.uri)) return@async
+                // Deduplication Check (Re-enabled)
+                if (!forceRescan && receiptDao.isAlreadyProcessed(image.uri)) return@async
 
                 // Step 2 & 3: Filter & Score (No Decode)
                 val score = calculateScore(image)
-                if (score < 3) {
+                if (score < 2) {
                     Log.d(TAG, "Skipping ${image.name} (score: $score)")
                     return@async
                 }
 
                 Log.d(TAG, "Processing ${image.name} (score: $score)")
                 
-                // 2. Bitmap Optimization: โหลดรูปแบบย่อส่วน ไม่ให้เกิน 1024px กัน OOM
+                // 2. Bitmap Optimization
                 val bitmap = loadOptimizedBitmap(Uri.parse(image.uri), maxWidth = 1024, maxHeight = 1024)
                 if (bitmap == null) {
                     Log.e(TAG, "Failed to load bitmap for ${image.uri}")
                     return@async
                 }
                 
-                // 3. OCR Cancellable: ใช้ suspendCancellableCoroutine
+                // 3. OCR Cancellable: Re-enabled with better keywords
                 val hasSlipKeywords = performOcrPreCheck(bitmap)
                 if (!hasSlipKeywords) {
-                    Log.d(TAG, "Failed OCR pre-check for ${image.name}")
+                    Log.d(TAG, "Failed OCR pre-check for ${image.name}. Not a slip.")
                     receiptDao.insert(ProcessedReceiptEntity(image.uri, image.dateAdded, image.size))
                     return@async
                 }
@@ -158,14 +158,21 @@ class SmartReceiptScanner @Inject constructor(
         val name = image.name.lowercase()
         
         if (path.contains("scb") || path.contains("kbank") || path.contains("krungthai") || path.contains("bbl") || path.contains("kma") || path.contains("bangkokbank")) score += 3
-        else if (path.contains("screenshots")) score += 1
+        else if (path.contains("screenshots") || path.contains("line") || path.contains("pictures") || path.contains("download")) score += 2
+        else score += 1 // ให้คะแนนพื้นฐานไว้ก่อน
         
-        if (name.contains("slip") || name.contains("receipt") || name.contains("transfer")) score += 2
+        if (name.contains("slip") || name.contains("receipt") || name.contains("transfer") || 
+            name.contains("statement") || name.contains("kbank") || name.contains("scb") || 
+            name.contains("krungthai") || name.contains("ktb") || name.contains("bbl") || 
+            name.contains("ttb") || name.contains("kma") || name.contains("gsb")) {
+            score += 2
+        }
         
         // DATE_ADDED Fix: MediaStore ส่งค่าเป็นวินาที (seconds) ต้องคูณ 1000 เพื่อเป็น Milliseconds
         val dateAddedMs = image.dateAdded * 1000L
         val timeDiff = System.currentTimeMillis() - dateAddedMs
-        if (timeDiff < 5 * 60 * 1000) score += 1 // ถ่ายภายใน 5 นาที
+        if (timeDiff < 5 * 60 * 1000) score += 2 // ถ่ายภายใน 5 นาที ให้คะแนนสูงขึ้นเลย
+        else if (timeDiff < 24 * 60 * 60 * 1000) score += 1 // ภายใน 1 วัน
         
         return score
     }
@@ -204,7 +211,10 @@ class SmartReceiptScanner @Inject constructor(
                     val text = visionText.text.lowercase()
                     val hasKeywords = text.contains("โอนเงิน") || text.contains("จำนวนเงิน") || 
                                      text.contains("บาท") || text.contains("amount") ||
-                                     text.contains("สำเร็จ") || text.contains("successful")
+                                     text.contains("สำเร็จ") || text.contains("successful") ||
+                                     text.contains("ยอดเงิน") || text.contains("จาก") || 
+                                     text.contains("ไปยัง") || text.contains("รายการ") ||
+                                     text.contains("thb")
                     cont.resume(hasKeywords, null)
                 }
             }

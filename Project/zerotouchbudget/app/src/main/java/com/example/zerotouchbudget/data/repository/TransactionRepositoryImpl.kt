@@ -17,7 +17,11 @@ class TransactionRepositoryImpl @Inject constructor(
         startOfDay: Long,
         endOfDay: Long
     ): Flow<List<Transaction>> {
-        return transactionDao.getTransactionsForDate(startOfDay, endOfDay)
+        return getTransactionsBetween(startOfDay, endOfDay)
+    }
+
+    override fun getTransactionsBetween(start: Long, end: Long): Flow<List<Transaction>> {
+        return transactionDao.getTransactionsBetween(start, end)
             .map { entities -> entities.map { it.toDomainModel() } }
     }
 

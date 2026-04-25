@@ -22,10 +22,10 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonthlyAnalysisScreen(
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    viewModel: MonthlyAnalysisViewModel = hiltViewModel()
 ) {
-    // ในอนาคตสามารถใช้ ViewModel ดึงข้อมูล SummariesInRange ได้
-    // ตอนนี้ขอแสดงเป็น UI ตัวอย่างและโครงสร้างสรุปรายเดือนก่อน
+    val uiState by viewModel.uiState.collectAsState()
     
     Scaffold(
         topBar = {
@@ -43,8 +43,10 @@ fun MonthlyAnalysisScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp)
         ) {
+            Spacer(modifier = Modifier.height(8.dp))
+            
             // Summary Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -53,15 +55,14 @@ fun MonthlyAnalysisScreen(
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text("This Month Spending", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = "฿12,450.00", 
+                        text = formatCurrency(uiState.thisMonthSpending), 
                         fontSize = 32.sp, 
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Daily Avg: ฿415.00", style = MaterialTheme.typography.bodySmall)
-                        Text("Over Budget: 3 Days", color = Color.Red, style = MaterialTheme.typography.bodySmall)
+                        Text("Daily Avg: ${formatCurrency(uiState.dailyAvg)}", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -71,10 +72,23 @@ fun MonthlyAnalysisScreen(
             Text("Monthly History", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(12.dp))
 
-            // รายการสรุปแต่ละวัน (Mock data)
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items((1..30).toList().reversed()) { day ->
-                    DaySummaryRow(day)
+            if (uiState.isLoading) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (uiState.dailyGroups.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text("No transactions this month", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 32.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(uiState.dailyGroups, key = { it.dateString }) { group ->
+                        DaySummaryCard(group = group)
+                    }
                 }
             }
         }
@@ -82,25 +96,67 @@ fun MonthlyAnalysisScreen(
 }
 
 @Composable
-fun DaySummaryRow(day: Int) {
+fun DaySummaryCard(group: DailyTransactionGroup) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text("April $day, 2024", fontWeight = FontWeight.Medium)
-                Text("5 Transactions", style = MaterialTheme.typography.labelSmall)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Day Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(group.dateString, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("${group.transactions.size} Transactions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    text = "-${formatCurrency(group.totalAmount)}",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
-            Text(
-                text = "฿${(200..800).random()}.00",
-                fontWeight = FontWeight.Bold,
-                color = if (day % 5 == 0) Color.Red else MaterialTheme.colorScheme.onSurface
-            )
+            
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+            
+            // Sub-items
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                group.transactions.forEach { tx ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(tx.brand, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            Text("${tx.category} • ${formatTime(tx.timestamp)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(
+                            text = "-${formatCurrency(tx.amount)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
         }
     }
+}
+
+private fun formatCurrency(amount: Double): String {
+    val format = NumberFormat.getCurrencyInstance(Locale("th", "TH"))
+    return format.format(amount)
+}
+
+private fun formatTime(timestamp: Long): String {
+    val sdf = java.text.SimpleDateFormat("HH:mm", Locale.getDefault())
+    return sdf.format(java.util.Date(timestamp))
 }

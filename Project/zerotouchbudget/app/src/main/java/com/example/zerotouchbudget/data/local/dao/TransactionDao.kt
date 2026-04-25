@@ -20,6 +20,16 @@ interface TransactionDao {
     )
     fun getTransactionsForDate(startOfDay: Long, endOfDay: Long): Flow<List<TransactionEntity>>
 
+    // Shared range query used by today and custom date screens.
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE timestamp >= :start AND timestamp < :end
+        ORDER BY timestamp DESC
+        """
+    )
+    fun getTransactionsBetween(start: Long, end: Long): Flow<List<TransactionEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(transaction: TransactionEntity)
 

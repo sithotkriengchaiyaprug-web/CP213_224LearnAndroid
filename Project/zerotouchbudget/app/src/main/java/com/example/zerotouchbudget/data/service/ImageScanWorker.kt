@@ -30,12 +30,7 @@ class ImageScanWorker @AssistedInject constructor(
             Log.d(TAG, "ImageScanWorker started. Starting smart scan...")
             
             // Limit to 50 for background worker to save battery
-            // Use lastScanImageId conceptually as timestamp or just track it inside the scanner
-            // Here we just pass 0 to let the scanner check deduplication via Room
             smartScanner.scan(limit = 50, sinceTimestamp = 0)
-            
-            // Re-schedule
-            scheduleImageScanWorker(context)
             
             Result.success()
         } catch (e: java.io.IOException) {
@@ -54,16 +49,16 @@ class ImageScanWorker @AssistedInject constructor(
 
 fun scheduleImageScanWorker(context: Context) {
     val constraints = androidx.work.Constraints.Builder()
-        .addContentUriTrigger(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true)
+        .setRequiresBatteryNotLow(true)
         .build()
 
-    val request = androidx.work.OneTimeWorkRequestBuilder<ImageScanWorker>()
+    val request = androidx.work.PeriodicWorkRequestBuilder<ImageScanWorker>(2, java.util.concurrent.TimeUnit.HOURS)
         .setConstraints(constraints)
         .build()
 
-    androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(
+    androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
         "ImageScanWorker",
-        androidx.work.ExistingWorkPolicy.REPLACE,
+        androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
         request
     )
 }
