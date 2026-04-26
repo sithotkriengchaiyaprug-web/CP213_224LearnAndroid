@@ -10,7 +10,9 @@ import android.util.Log
 import com.example.zerotouchbudget.data.local.dao.ProcessedReceiptDao
 import com.example.zerotouchbudget.data.local.entity.ProcessedReceiptEntity
 import com.example.zerotouchbudget.domain.model.Transaction
+import com.example.zerotouchbudget.domain.usecase.NotAReceiptException
 import com.example.zerotouchbudget.domain.usecase.ProcessReceiptImageUseCase
+import com.example.zerotouchbudget.domain.usecase.RateLimitException
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -40,7 +42,8 @@ data class ScanSummary(
     val skippedScore: Int = 0,
     val failedOcr: Int = 0,
     val failedAi: Int = 0,
-    val success: Int = 0
+    val success: Int = 0,
+    val lastError: String = ""
 )
 
 @Singleton
@@ -56,7 +59,7 @@ class SmartReceiptScanner @Inject constructor(
     // Concurrency Control: ป้องกัน OOM และ CPU ร้อน
     private val scanDispatcher = Dispatchers.IO.limitedParallelism(2)
 
-    suspend fun scan(limit: Int = 100, sinceTimestamp: Long = 0, forceRescan: Boolean = false): ScanSummary = withContext(scanDispatcher) {
+    suspend fun scan(limit: Int = 100, sinceTimestamp: Long = 0, forceRescan: Boolean = false): ScanSummary {
         Log.d(TAG, "Starting scan limit=$limit since=$sinceTimestamp forceRescan=$forceRescan")
         val images = queryMediaStore(limit, sinceTimestamp)
         
@@ -67,66 +70,74 @@ class SmartReceiptScanner @Inject constructor(
         var failedAi = 0
         var success = 0
         var aiCallCount = 0
-        val AI_BATCH_LIMIT = 5 // ไม่เกิน 5 รูปต่อ session เพื่อไม่ let rate limit
+        var lastError = ""
+        val AI_BATCH_LIMIT = 5
 
-        for (image in images) {
-            // หยุดส่ง AI เมื่อครบ batch limit
-            if (aiCallCount >= AI_BATCH_LIMIT) {
-                Log.d(TAG, "AI batch limit reached ($AI_BATCH_LIMIT). Stopping.")
-                break
-            }
+        return withContext(scanDispatcher) {
+            for (image in images) {
+                if (aiCallCount >= AI_BATCH_LIMIT) {
+                    Log.d(TAG, "AI batch limit reached. Stopping.")
+                    break
+                }
 
-            // Deduplication Check
-            if (!forceRescan && receiptDao.isAlreadyProcessed(image.uri)) {
-                skippedDedup++
-                continue
-            }
+                // Deduplication Check
+                if (!forceRescan && receiptDao.isAlreadyProcessed(image.uri)) {
+                    skippedDedup++
+                    continue
+                }
 
-            // Score Filter — รูปที่ไม่น่าใช่สลิปเลย
-            val score = calculateScore(image)
-            if (score < 1) {
-                Log.d(TAG, "Skipping ${image.name} (score: $score)")
-                skippedScore++
-                continue
-            }
+                // Score Filter
+                val score = calculateScore(image)
+                if (score < 1) {
+                    skippedScore++
+                    continue
+                }
 
-            Log.d(TAG, "Processing ${image.name} (score: $score)")
-            
-            // Bitmap Optimization
-            val bitmap = loadOptimizedBitmap(Uri.parse(image.uri), maxWidth = 1024, maxHeight = 1024)
-            if (bitmap == null) {
-                Log.e(TAG, "Failed to load bitmap for ${image.uri}")
-                failedOcr++
-                continue
-            }
+                // Bitmap Optimization
+                val bitmap = loadOptimizedBitmap(Uri.parse(image.uri), maxWidth = 1024, maxHeight = 1024)
+                if (bitmap == null) {
+                    failedOcr++
+                    continue
+                }
 
-            // Rate limiting: delay 5s between AI calls
-            if (aiCallCount > 0) delay(5_000L)
-
-            // ส่งให้ Gemini AI ตัดสินโดยตรง
-            Log.d(TAG, "Sending ${image.name} to Gemini AI (call ${aiCallCount + 1}/$AI_BATCH_LIMIT)...")
-            aiCallCount++
-            
-            // AI Timeout + Retry
-            val result = processWithAiWithRetry(bitmap)
-            if (result.isSuccess) {
-                Log.d(TAG, "Successfully processed transaction from AI")
-                success++
-            } else {
-                val ex = result.exceptionOrNull()
-                if (ex is com.example.zerotouchbudget.domain.usecase.NotAReceiptException) {
-                    Log.d(TAG, "Not a receipt: ${image.name}")
-                    notReceipt++
-                } else {
-                    Log.e(TAG, "AI processing failed for ${image.name}", ex)
-                    failedAi++
+                // Rate limiting delay between calls
+                if (aiCallCount > 0) delay(5_000L)
+                Log.d(TAG, "Sending ${image.name} to Gemini AI (call ${aiCallCount + 1}/$AI_BATCH_LIMIT)...")
+                aiCallCount++
+                
+                val result = processWithAiWithRetry(bitmap)
+                when {
+                    result.isSuccess -> {
+                        Log.d(TAG, "AI success for ${image.name}")
+                        success++
+                        receiptDao.insert(ProcessedReceiptEntity(image.uri, image.dateAdded, image.size))
+                    }
+                    result.exceptionOrNull() is NotAReceiptException -> {
+                        Log.d(TAG, "Not a receipt: ${image.name}")
+                        notReceipt++
+                        receiptDao.insert(ProcessedReceiptEntity(image.uri, image.dateAdded, image.size))
+                    }
+                    result.exceptionOrNull() is RateLimitException -> {
+                        val errMsg = result.exceptionOrNull()?.message?.take(50) ?: "Quota exceeded"
+                        Log.e(TAG, "Rate limit hit — stopping scan immediately: $errMsg")
+                        failedAi++
+                        lastError = "Quota! รอ 1 นาที"
+                        receiptDao.insert(ProcessedReceiptEntity(image.uri, image.dateAdded, image.size))
+                        // ออกจาก withContext ทันที ไม่ process รูปถัดไป
+                        return@withContext ScanSummary(images.size, skippedDedup, skippedScore, notReceipt, failedAi, success, lastError)
+                    }
+                    else -> {
+                        val ex = result.exceptionOrNull()
+                        Log.e(TAG, "AI error for ${image.name}", ex)
+                        lastError = ex?.message?.take(60) ?: "Unknown"
+                        failedAi++
+                        receiptDao.insert(ProcessedReceiptEntity(image.uri, image.dateAdded, image.size))
+                    }
                 }
             }
-            
-            receiptDao.insert(ProcessedReceiptEntity(image.uri, image.dateAdded, image.size))
+            Log.d(TAG, "Scan done: ✅$success ❌$failedAi")
+            ScanSummary(images.size, skippedDedup, skippedScore, notReceipt, failedAi, success, lastError)
         }
-        Log.d(TAG, "Scan completed")
-        ScanSummary(images.size, skippedDedup, skippedScore, notReceipt, failedAi, success)
     }
 
     private fun queryMediaStore(limit: Int, sinceTimestamp: Long): List<ImageMetadata> {
@@ -259,14 +270,14 @@ class SmartReceiptScanner @Inject constructor(
         }
     }
 
-    // Timeout + Exponential Backoff Retry with Rate Limit detection
+    // Timeout + Exponential Backoff Retry — Rate limit = stop immediately
     private suspend fun processWithAiWithRetry(bitmap: Bitmap): Result<Transaction> {
         var currentDelay = 2000L
-        val maxRetries = 3
+        val maxRetries = 2
         
         repeat(maxRetries) { attempt ->
             try {
-                return withTimeout(20_000L) { // Timeout 20 วินาที
+                return withTimeout(20_000L) {
                     geminiUseCase(bitmap)
                 }
             } catch (e: TimeoutCancellationException) {
@@ -275,15 +286,20 @@ class SmartReceiptScanner @Inject constructor(
                 delay(currentDelay)
                 currentDelay *= 2
             } catch (e: Exception) {
-                val isRateLimit = e.message?.contains("quota", ignoreCase = true) == true ||
-                    e.message?.contains("429") == true ||
-                    e.message?.contains("rate", ignoreCase = true) == true
+                val msg = e.message ?: ""
+                val className = e.javaClass.simpleName
+                Log.e(TAG, "Gemini exception [$className]: $msg")
+                val isRateLimit = msg.contains("quota", ignoreCase = true) ||
+                    msg.contains("429") ||
+                    msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
+                    msg.contains("rate", ignoreCase = true) ||
+                    className.contains("Rate", ignoreCase = true)
                 if (isRateLimit) {
-                    Log.w(TAG, "Rate limit hit! Waiting 60s before retry ${attempt + 1}...")
-                    delay(60_000L) // รอ 60 วินาที แล้ว retry
+                    Log.e(TAG, "Rate limit hit! Stopping batch.")
+                    return Result.failure(RateLimitException("[$className] ${msg.take(80)}"))
                 } else {
-                    Log.w(TAG, "Gemini AI Error. Attempt ${attempt + 1}", e)
-                    if (attempt == maxRetries - 1) return Result.failure(e)
+                    Log.w(TAG, "Gemini AI Error [$className]. Attempt ${attempt + 1}")
+                    if (attempt == maxRetries - 1) return Result.failure(RateLimitException("[$className] ${msg.take(80)}"))
                     delay(currentDelay)
                     currentDelay *= 2
                 }

@@ -99,7 +99,8 @@ class SettingsViewModel @Inject constructor(
                     smartScanner.scan(limit = 50, sinceTimestamp = sevenDaysAgo, forceRescan = true)
                 }
                 BudgetWidget().updateAll(context)
-                val msg = "Force: Found:${summary.totalFound} NotSlip:${summary.failedOcr} ErrAI:${summary.failedAi} ✅${summary.success}"
+                val errInfo = if (summary.failedAi > 0 && summary.lastError.isNotEmpty()) " | ${summary.lastError}" else ""
+                val msg = "Force: Found:${summary.totalFound} NotSlip:${summary.failedOcr} ErrAI:${summary.failedAi} ✅${summary.success}$errInfo"
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
                 }

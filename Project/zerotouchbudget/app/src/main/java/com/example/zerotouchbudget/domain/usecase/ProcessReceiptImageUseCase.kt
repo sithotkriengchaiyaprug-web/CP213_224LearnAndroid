@@ -18,6 +18,9 @@ import javax.inject.Inject
 /** Thrown when the image is not a receipt (AI returned amount=0 or invalid) */
 class NotAReceiptException(reason: String) : Exception("Not a receipt: $reason")
 
+/** Thrown when Gemini API quota/rate limit is exceeded — stop entire batch */
+class RateLimitException(message: String) : Exception(message)
+
 class ProcessReceiptImageUseCase @Inject constructor(
     private val generativeModel: GenerativeModel,
     private val repository: TransactionRepository
