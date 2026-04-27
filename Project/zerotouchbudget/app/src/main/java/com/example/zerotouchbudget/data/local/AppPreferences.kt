@@ -24,10 +24,15 @@ class AppPreferences @Inject constructor(
         get() = prefs.getFloat(KEY_DAILY_BUDGET, 500f).toDouble()
         set(value) = prefs.edit().putFloat(KEY_DAILY_BUDGET, value.toFloat()).apply()
 
+    var autoScannedCount: Int
+        get() = prefs.getInt(KEY_AUTO_SCANNED_COUNT, 0)
+        set(value) = prefs.edit().putInt(KEY_AUTO_SCANNED_COUNT, value).apply()
+
     companion object {
         private const val PREF_NAME = "zero_touch_budget_prefs"
         private const val KEY_LAST_SCANNED_IMAGE_ID = "last_scanned_image_id"
         private const val KEY_AUTO_SCAN_ENABLED = "auto_scan_enabled"
         private const val KEY_DAILY_BUDGET = "daily_budget"
+        private const val KEY_AUTO_SCANNED_COUNT = "auto_scanned_count"
     }
 }

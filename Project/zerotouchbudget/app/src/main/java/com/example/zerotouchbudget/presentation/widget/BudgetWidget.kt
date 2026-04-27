@@ -62,7 +62,7 @@ class BudgetWidget : GlanceAppWidget() {
         val budgetLimit = todaySummary?.budgetLimit ?: prefs.dailyBudget // fallback to prefs
 
         val (start, end) = DateUtils.getTodayBounds()
-        val todaySpent = repository.getTotalSpentForDate(start, end)
+        val todaySpent = todaySummary?.totalSpent ?: repository.getTotalSpentForDate(start, end)
         val remaining = budgetLimit - todaySpent
         val todayTransactions = repository.getTodayTransactions(start, end).first()
         val transactionCount = todayTransactions.size
@@ -128,6 +128,7 @@ fun WidgetContent(
             .background(bgColor)
             .clickable(actionStartActivity<MainActivity>())
     ) {
+
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()

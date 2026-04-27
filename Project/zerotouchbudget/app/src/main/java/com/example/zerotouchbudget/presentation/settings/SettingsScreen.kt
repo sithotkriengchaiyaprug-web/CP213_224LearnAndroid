@@ -41,6 +41,7 @@ fun SettingsScreen(
     val currentBudget by viewModel.currentBudget.collectAsState()
     val isAutoScanEnabled by viewModel.isAutoScanEnabled.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val autoScannedCount by viewModel.autoScannedCount.collectAsState()
     var budgetInput by remember { mutableStateOf(currentBudget.toString()) }
     var saved by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -96,7 +97,7 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold)
                             Text(
-                                if (isAutoScanEnabled) "Zero-Touch mode — ทำงานอัตโนมัติ"
+                                if (isAutoScanEnabled) "ทำงานอัตโนมัติ (สแกนสำเร็จแล้ว: $autoScannedCount รูป)"
                                 else "Scanning is paused",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (isAutoScanEnabled) Success else TextSec

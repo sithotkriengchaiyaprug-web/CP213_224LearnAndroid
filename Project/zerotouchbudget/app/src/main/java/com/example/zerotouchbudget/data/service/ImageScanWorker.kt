@@ -30,7 +30,7 @@ class ImageScanWorker @AssistedInject constructor(
             Log.d(TAG, "ImageScanWorker started. Starting smart scan...")
             
             // Limit to 50 for background worker to save battery
-            smartScanner.scan(limit = 50, sinceTimestamp = 0)
+            smartScanner.scan(limit = 50, sinceTimestamp = 0, isAutoScan = true)
             
             Result.success()
         } catch (e: java.io.IOException) {

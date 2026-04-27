@@ -45,7 +45,7 @@ class BankNotificationService : NotificationListenerService() {
             Log.d("BankNotificationService", "New image detected by ContentObserver! Starting scan...")
             serviceScope.launch {
                 // Scan images added in the last 5 minutes (limit 5 according to flow)
-                smartScanner.scan(limit = 5, sinceTimestamp = System.currentTimeMillis() - 5 * 60 * 1000)
+                smartScanner.scan(limit = 5, sinceTimestamp = System.currentTimeMillis() - 5 * 60 * 1000, isAutoScan = true)
             }
         }
         

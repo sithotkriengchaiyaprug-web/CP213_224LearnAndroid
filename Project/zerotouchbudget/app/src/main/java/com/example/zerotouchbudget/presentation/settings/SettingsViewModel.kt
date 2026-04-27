@@ -36,6 +36,9 @@ class SettingsViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _autoScannedCount = MutableStateFlow(appPreferences.autoScannedCount)
+    val autoScannedCount: StateFlow<Int> = _autoScannedCount.asStateFlow()
+
     init {
         loadCurrentBudget()
     }
@@ -77,12 +80,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // คำนวณเวลาย้อนหลัง 7 วัน (แปลงเป็น Milliseconds)
-                val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
+                // คำนวณเวลาย้อนหลัง 3 วัน (แปลงเป็น Milliseconds)
+                val threeDaysAgo = System.currentTimeMillis() - (3 * 24 * 60 * 60 * 1000L)
                 
                 // สั่งสแกนรูปเก่าๆ ทั้งหมด (limit = 50 รูป)
                 val summary = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    smartScanner.scan(limit = 50, sinceTimestamp = sevenDaysAgo, forceRescan = false)
+                    smartScanner.scan(limit = 50, sinceTimestamp = threeDaysAgo, forceRescan = false)
                 }
                 
                 BudgetWidget().updateAll(context)
@@ -103,9 +106,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
+                val threeDaysAgo = System.currentTimeMillis() - (3 * 24 * 60 * 60 * 1000L)
                 val summary = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    smartScanner.scan(limit = 50, sinceTimestamp = sevenDaysAgo, forceRescan = true)
+                    smartScanner.scan(limit = 50, sinceTimestamp = threeDaysAgo, forceRescan = true)
                 }
                 BudgetWidget().updateAll(context)
                 val errInfo = if (summary.failedAi > 0 && summary.lastError.isNotEmpty()) " | ${summary.lastError}" else ""

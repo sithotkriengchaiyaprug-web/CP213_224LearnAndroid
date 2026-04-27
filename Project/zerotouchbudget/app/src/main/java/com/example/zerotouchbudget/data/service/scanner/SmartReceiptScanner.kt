@@ -50,7 +50,8 @@ data class ScanSummary(
 class SmartReceiptScanner @Inject constructor(
     @ApplicationContext private val context: Context,
     private val geminiUseCase: ProcessReceiptImageUseCase,
-    private val receiptDao: ProcessedReceiptDao
+    private val receiptDao: ProcessedReceiptDao,
+    private val appPreferences: com.example.zerotouchbudget.data.local.AppPreferences
 ) {
     private val TAG = "SmartReceiptScanner"
     // ML Kit recognizer
@@ -59,8 +60,8 @@ class SmartReceiptScanner @Inject constructor(
     // Concurrency Control: ป้องกัน OOM และ CPU ร้อน
     private val scanDispatcher = Dispatchers.IO.limitedParallelism(2)
 
-    suspend fun scan(limit: Int = 100, sinceTimestamp: Long = 0, forceRescan: Boolean = false): ScanSummary {
-        Log.d(TAG, "Starting scan limit=$limit since=$sinceTimestamp forceRescan=$forceRescan")
+    suspend fun scan(limit: Int = 100, sinceTimestamp: Long = 0, forceRescan: Boolean = false, isAutoScan: Boolean = false): ScanSummary {
+        Log.d(TAG, "Starting scan limit=$limit since=$sinceTimestamp forceRescan=$forceRescan isAuto=$isAutoScan")
         val images = queryMediaStore(limit, sinceTimestamp)
         
         var skippedDedup = 0
@@ -71,7 +72,7 @@ class SmartReceiptScanner @Inject constructor(
         var success = 0
         var aiCallCount = 0
         var lastError = ""
-        val AI_BATCH_LIMIT = 5
+        val AI_BATCH_LIMIT = 3 // ลดลงเหลือ 3 เพื่อไม่ให้เกินโควต้า 5 RPM ของ Google
 
         return withContext(scanDispatcher) {
             for (image in images) {
@@ -100,8 +101,18 @@ class SmartReceiptScanner @Inject constructor(
                     continue
                 }
 
-                // Rate limiting delay between calls
-                if (aiCallCount > 0) delay(5_000L)
+                // Local OCR Pre-Check (Free & Fast on-device)
+                val isLikelyReceipt = performOcrPreCheck(bitmap)
+                if (!isLikelyReceipt) {
+                    Log.d(TAG, "Failed OCR Pre-check, skipping: ${image.name}")
+                    notReceipt++
+                    // Mark as processed so we don't check it again next time
+                    receiptDao.insert(ProcessedReceiptEntity(image.uri, image.dateAdded, image.size))
+                    continue
+                }
+
+                // Rate limiting delay between calls (หน่วง 10 วินาทีต่อรูป)
+                if (aiCallCount > 0) delay(10_000L)
                 Log.d(TAG, "Sending ${image.name} to Gemini AI (call ${aiCallCount + 1}/$AI_BATCH_LIMIT)...")
                 aiCallCount++
                 
@@ -136,6 +147,11 @@ class SmartReceiptScanner @Inject constructor(
                 }
             }
             Log.d(TAG, "Scan done: ✅$success ❌$failedAi")
+            
+            if (isAutoScan && success > 0) {
+                appPreferences.autoScannedCount += success
+            }
+            
             ScanSummary(images.size, skippedDedup, skippedScore, notReceipt, failedAi, success, lastError)
         }
     }
@@ -277,8 +293,15 @@ class SmartReceiptScanner @Inject constructor(
         
         repeat(maxRetries) { attempt ->
             try {
-                return withTimeout(20_000L) {
+                val result = withTimeout(20_000L) {
                     geminiUseCase(bitmap)
+                }
+                
+                if (result.isSuccess) {
+                    return result
+                } else {
+                    // Throw the exception so the catch block handles it (retry/rate limit detection)
+                    throw result.exceptionOrNull() ?: Exception("Unknown Gemini Error")
                 }
             } catch (e: TimeoutCancellationException) {
                 Log.w(TAG, "Gemini AI Timeout. Attempt ${attempt + 1}")
@@ -286,20 +309,27 @@ class SmartReceiptScanner @Inject constructor(
                 delay(currentDelay)
                 currentDelay *= 2
             } catch (e: Exception) {
+                // If it's NotAReceiptException, don't retry, just return it immediately
+                if (e is NotAReceiptException) {
+                    return Result.failure(e)
+                }
+                
                 val msg = e.message ?: ""
                 val className = e.javaClass.simpleName
                 Log.e(TAG, "Gemini exception [$className]: $msg")
+                
                 val isRateLimit = msg.contains("quota", ignoreCase = true) ||
                     msg.contains("429") ||
                     msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
                     msg.contains("rate", ignoreCase = true) ||
                     className.contains("Rate", ignoreCase = true)
+                    
                 if (isRateLimit) {
                     Log.e(TAG, "Rate limit hit! Stopping batch.")
                     return Result.failure(RateLimitException("[$className] ${msg.take(80)}"))
                 } else {
                     Log.w(TAG, "Gemini AI Error [$className]. Attempt ${attempt + 1}")
-                    if (attempt == maxRetries - 1) return Result.failure(RateLimitException("[$className] ${msg.take(80)}"))
+                    if (attempt == maxRetries - 1) return Result.failure(e) // Return the actual exception
                     delay(currentDelay)
                     currentDelay *= 2
                 }
