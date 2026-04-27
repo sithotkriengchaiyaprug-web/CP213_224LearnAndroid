@@ -1,7 +1,6 @@
 package com.example.zerotouchbudget.presentation.widget
 
 import android.content.Context
-import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -11,8 +10,10 @@ import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.updateAll
 import androidx.glance.background
@@ -37,8 +38,8 @@ import com.example.zerotouchbudget.presentation.home.MainActivity
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.first
 import java.text.NumberFormat
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 class BudgetWidgetReceiver : GlanceAppWidgetReceiver() {
@@ -52,13 +53,20 @@ class BudgetWidget : GlanceAppWidget() {
             context, WidgetEntryPoint::class.java
         )
         val repository = entryPoint.transactionRepository()
+        val prefs = entryPoint.appPreferences()
+        val summaryRepo = entryPoint.dailySummaryRepository()
+
+        // ดึง budget จาก DailySummaryRepository (เหมือนกับที่แอปหลักใช้)
+        val today = DateUtils.getCurrentDateString()
+        val todaySummary = summaryRepo.getSummaryForDate(today).first()
+        val budgetLimit = todaySummary?.budgetLimit ?: prefs.dailyBudget // fallback to prefs
 
         val (start, end) = DateUtils.getTodayBounds()
         val todaySpent = repository.getTotalSpentForDate(start, end)
-        val budgetLimit = 100.0
         val remaining = budgetLimit - todaySpent
         val todayTransactions = repository.getTodayTransactions(start, end).first()
         val transactionCount = todayTransactions.size
+        val lastTransaction = todayTransactions.firstOrNull()
         val spentPercentage = if (budgetLimit > 0) (todaySpent / budgetLimit).toFloat().coerceIn(0f, 1f) else 0f
 
         provideContent {
@@ -68,7 +76,8 @@ class BudgetWidget : GlanceAppWidget() {
                     spent = todaySpent,
                     budget = budgetLimit,
                     transactionCount = transactionCount,
-                    spentPercentage = spentPercentage
+                    spentPercentage = spentPercentage,
+                    lastBrand = lastTransaction?.brand ?: ""
                 )
             }
         }
@@ -81,180 +90,202 @@ fun WidgetContent(
     spent: Double,
     budget: Double,
     transactionCount: Int,
-    spentPercentage: Float
+    spentPercentage: Float,
+    lastBrand: String
 ) {
-    val format = NumberFormat.getCurrencyInstance(Locale("th", "TH"))
+    val fmt = NumberFormat.getNumberInstance(Locale("th", "TH")).apply {
+        maximumFractionDigits = 0
+    }
+
     val isOverBudget = remaining < 0
-    val dateFormat = SimpleDateFormat("d MMM", Locale.getDefault())
-    val today = dateFormat.format(Date())
+    val isWarning = spentPercentage > 0.75f && !isOverBudget
+    val today = LocalDate.now().format(DateTimeFormatter.ofPattern("d MMM", Locale("th")))
+    val percent = (spentPercentage * 100).toInt()
+
+    // Color palette
+    val bgColor = Color(0xFF0D1117)
+    val cardColor = Color(0xFF161B22)
+    val accentGreen = Color(0xFF00E676)
+    val accentOrange = Color(0xFFFFB300)
+    val accentRed = Color(0xFFFF5252)
+    val textSecondary = Color(0xFF8B949E)
+    val progressBg = Color(0xFF21262D)
+
+    val amountColor = when {
+        isOverBudget -> accentRed
+        isWarning -> accentOrange
+        else -> accentGreen
+    }
+    val statusEmoji = when {
+        isOverBudget -> "🔴"
+        isWarning -> "🟡"
+        else -> "🟢"
+    }
 
     Box(
         modifier = GlanceModifier
             .fillMaxSize()
-            .padding(12.dp)
+            .background(bgColor)
             .clickable(actionStartActivity<MainActivity>())
-            .background(
-                if (isOverBudget) Color(0xFFFFEBEE)
-                else Color(0xFFE8F5E9)
-            )
     ) {
         Column(
-            modifier = GlanceModifier.fillMaxSize(),
-            verticalAlignment = Alignment.Top,
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = GlanceModifier
+                .fillMaxSize()
+                .padding(14.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            // Header
+            // ── Header Row ──
             Row(
                 modifier = GlanceModifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.Start
+                horizontalAlignment = Alignment.End
             ) {
                 Text(
-                    text = "Zero-Touch Budget",
+                    text = "$statusEmoji งบวันนี้",
                     style = TextStyle(
-                        fontSize = 12.sp,
-                        color = ColorProvider(Color(0xFF666666))
-                    )
-                )
-            }
-
-            Text(
-                text = today,
-                style = TextStyle(
-                    fontSize = 11.sp,
-                    color = ColorProvider(Color(0xFF999999))
-                )
-            )
-
-            Spacer(modifier = GlanceModifier.height(8.dp))
-
-            // Remaining Amount
-            Text(
-                text = "Remaining",
-                style = TextStyle(
-                    fontSize = 13.sp,
-                    color = ColorProvider(Color(0xFF666666))
-                )
-            )
-
-            Text(
-                text = format.format(remaining),
-                style = TextStyle(
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ColorProvider(
-                        if (isOverBudget) Color(0xFFD32F2F)
-                        else if (spentPercentage > 0.7f) Color(0xFFE65100)
-                        else Color(0xFF2E7D32)
+                        fontSize = 11.sp,
+                        color = ColorProvider(textSecondary)
                     ),
-                    textAlign = TextAlign.Center
+                    modifier = GlanceModifier.defaultWeight()
                 )
-            )
-
-            if (isOverBudget) {
                 Text(
-                    text = "Over budget!",
+                    text = today,
                     style = TextStyle(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorProvider(Color(0xFFD32F2F))
+                        fontSize = 11.sp,
+                        color = ColorProvider(textSecondary)
                     )
                 )
-            }
-
-            Spacer(modifier = GlanceModifier.height(8.dp))
-
-            // Stats Row
-            Row(
-                modifier = GlanceModifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Spent
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Spent",
-                        style = TextStyle(
-                            fontSize = 11.sp,
-                            color = ColorProvider(Color(0xFF999999))
-                        )
+                Spacer(modifier = GlanceModifier.width(8.dp))
+                // ปุ่ม Reload บน Widget
+                Text(
+                    text = "↻",
+                    style = TextStyle(
+                        fontSize = 14.sp,
+                        color = ColorProvider(Color(0xFF58A6FF))
+                    ),
+                    modifier = GlanceModifier.clickable(
+                        actionRunCallback<RefreshWidgetAction>()
                     )
-                    Text(
-                        text = format.format(spent),
-                        style = TextStyle(
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = ColorProvider(Color(0xFFD32F2F))
-                        )
-                    )
-                }
-
-                Spacer(modifier = GlanceModifier.width(16.dp))
-
-                // Budget
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Budget",
-                        style = TextStyle(
-                            fontSize = 11.sp,
-                            color = ColorProvider(Color(0xFF999999))
-                        )
-                    )
-                    Text(
-                        text = format.format(budget),
-                        style = TextStyle(
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = ColorProvider(Color(0xFF333333))
-                        )
-                    )
-                }
-
-                Spacer(modifier = GlanceModifier.width(16.dp))
-
-                // Count
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Items",
-                        style = TextStyle(
-                            fontSize = 11.sp,
-                            color = ColorProvider(Color(0xFF999999))
-                        )
-                    )
-                    Text(
-                        text = "$transactionCount",
-                        style = TextStyle(
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = ColorProvider(Color(0xFF333333))
-                        )
-                    )
-                }
+                )
             }
 
             Spacer(modifier = GlanceModifier.height(6.dp))
 
-            // Progress Text
-            val percent = (spentPercentage * 100).toInt()
+            // ── Remaining Amount ──
             Text(
-                text = "Used $percent% of daily budget",
+                text = "คงเหลือ",
                 style = TextStyle(
-                    fontSize = 11.sp,
-                    color = ColorProvider(
-                        if (spentPercentage > 0.9f) Color(0xFFD32F2F)
-                        else Color(0xFF666666)
-                    )
+                    fontSize = 12.sp,
+                    color = ColorProvider(textSecondary)
                 )
             )
+            Text(
+                text = "฿${fmt.format(kotlin.math.abs(remaining))}${if (isOverBudget) " (เกิน)" else ""}",
+                style = TextStyle(
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ColorProvider(amountColor),
+                    textAlign = TextAlign.Start
+                )
+            )
+
+            Spacer(modifier = GlanceModifier.height(10.dp))
+
+            // ── Progress Bar (text-based for Glance compatibility) ──
+            val filled = ((spentPercentage * 12).toInt()).coerceIn(0, 12)
+            val empty = 12 - filled
+            val barText = "${"||".repeat(filled)}${"  ".repeat(empty)}"
+            Box(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .background(Color(0xFF21262D))
+                    .cornerRadius(4.dp)
+                    .padding(horizontal = 4.dp)
+            ) {
+                Text(
+                    text = barText,
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        color = ColorProvider(amountColor)
+                    )
+                )
+            }
 
             Spacer(modifier = GlanceModifier.height(4.dp))
 
-            // Tap hint
-            Text(
-                text = "Tap to open app",
-                style = TextStyle(
-                    fontSize = 10.sp,
-                    color = ColorProvider(Color(0xFFBBBBBB))
+            // ── Progress Label ──
+            Row(modifier = GlanceModifier.fillMaxWidth()) {
+                Text(
+                    text = "ใช้ไป $percent%",
+                    style = TextStyle(fontSize = 10.sp, color = ColorProvider(textSecondary)),
+                    modifier = GlanceModifier.defaultWeight()
                 )
-            )
+                Text(
+                    text = "฿${fmt.format(budget)}",
+                    style = TextStyle(fontSize = 10.sp, color = ColorProvider(textSecondary))
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.height(10.dp))
+
+            // ── Stats Row ──
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.Start
+            ) {
+                // Spent
+                Column {
+                    Text(
+                        text = "ใช้ไปแล้ว",
+                        style = TextStyle(fontSize = 10.sp, color = ColorProvider(textSecondary))
+                    )
+                    Text(
+                        text = "฿${fmt.format(spent)}",
+                        style = TextStyle(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ColorProvider(accentRed)
+                        )
+                    )
+                }
+
+                Spacer(modifier = GlanceModifier.width(20.dp))
+
+                // Transactions
+                Column {
+                    Text(
+                        text = "รายการ",
+                        style = TextStyle(fontSize = 10.sp, color = ColorProvider(textSecondary))
+                    )
+                    Text(
+                        text = "$transactionCount รายการ",
+                        style = TextStyle(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ColorProvider(Color(0xFFCDD9E5))
+                        )
+                    )
+                }
+
+                // Last brand (if available)
+                if (lastBrand.isNotBlank()) {
+                    Spacer(modifier = GlanceModifier.width(20.dp))
+                    Column {
+                        Text(
+                            text = "ล่าสุด",
+                            style = TextStyle(fontSize = 10.sp, color = ColorProvider(textSecondary))
+                        )
+                        Text(
+                            text = lastBrand.take(10),
+                            style = TextStyle(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorProvider(Color(0xFFCDD9E5))
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 }

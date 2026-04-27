@@ -66,8 +66,9 @@ class HomeViewModel @Inject constructor(
         _errorMessage
     ) { summary, transactions, isLoading, autoScanEnabled, error ->
         val limit = summary?.budgetLimit ?: 100.0
-        val totalSpent = summary?.totalSpent ?: transactions.sumOf { it.amount }
-        val remaining = summary?.surplus ?: (limit - totalSpent)
+        // คำนวณจาก transactions จริงๆ เสมอ — ไม่ใช้ summary.surplus ที่อาจค้าง
+        val totalSpent = transactions.sumOf { it.amount }
+        val remaining = limit - totalSpent
         
         HomeUiState(
             remainingBudget = remaining,

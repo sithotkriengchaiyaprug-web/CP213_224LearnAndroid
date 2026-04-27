@@ -64,6 +64,15 @@ class SettingsViewModel @Inject constructor(
         appPreferences.isAutoScanEnabled = enabled
     }
 
+    fun refreshWidget() {
+        viewModelScope.launch {
+            BudgetWidget().updateAll(context)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                android.widget.Toast.makeText(context, "Widget อัปเดตแล้ว ✅", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     fun scanExistingImages() {
         viewModelScope.launch {
             _isLoading.value = true

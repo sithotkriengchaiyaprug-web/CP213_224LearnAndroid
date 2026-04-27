@@ -121,40 +121,7 @@ fun HomeScreen(
                         )
                     }
                 },
-                actions = {
-                    if (uiState.isAutoScanEnabled) {
-                        val infiniteTransition = rememberInfiniteTransition()
-                        val alpha by infiniteTransition.animateFloat(
-                            initialValue = 0.4f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(
-                                animation = androidx.compose.animation.core.tween(1000),
-                                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-                            ), label = "pulse"
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .padding(end = 16.dp)
-                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f), shape = RoundedCornerShape(12.dp))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = "Auto-Scan Active",
-                                modifier = Modifier.size(14.dp),
-                                tint = Color(0xFF6DD58C).copy(alpha = alpha)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                "Auto-Scan Active",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                },
+                actions = {},
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         },
@@ -170,46 +137,49 @@ fun HomeScreen(
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize()
             ) {
-                Spacer(modifier = Modifier.height(8.dp))
-                HeroBudgetCard(uiState)
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "Recent Transactions",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+                AiStatusStrip(uiState.isAutoScanEnabled)
+                Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HeroBudgetCard(uiState)
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = "Recent Transactions",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                if (uiState.recentTransactions.isEmpty() && !uiState.isLoading) {
-                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.surfaceVariant)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("No transactions yet today", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (uiState.recentTransactions.isEmpty() && !uiState.isLoading) {
+                        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.surfaceVariant)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("No transactions yet today", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(bottom = 80.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(uiState.recentTransactions, key = { it.id }) { transaction ->
-                            TransactionRow(
-                                transaction = transaction,
-                                onEdit = {
-                                    selectedTransaction = transaction
-                                    showEditDialog = true
-                                },
-                                onDelete = {
-                                    selectedTransaction = transaction
-                                    showDeleteDialog = true
-                                }
-                            )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(bottom = 80.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(uiState.recentTransactions, key = { it.id }) { transaction ->
+                                TransactionRow(
+                                    transaction = transaction,
+                                    onEdit = {
+                                        selectedTransaction = transaction
+                                        showEditDialog = true
+                                    },
+                                    onDelete = {
+                                        selectedTransaction = transaction
+                                        showDeleteDialog = true
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -282,6 +252,162 @@ fun HomeScreen(
 }
 
 @Composable
+private fun AiStatusStrip(isActive: Boolean) {
+    if (!isActive) return
+    val pulse = rememberInfiniteTransition(label = "pulse")
+    val alpha by pulse.animateFloat(
+        initialValue = 0.5f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "a"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF3730F5).copy(alpha = 0.07f))
+            .padding(horizontal = 20.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(Color(0xFF00C97A).copy(alpha = alpha)))
+        Text(
+            "⚡  AI Auto-Scan กำลังทำงาน — สแกน slip อัตโนมัติ",
+            style = MaterialTheme.typography.labelMedium,
+            color = Color(0xFF3730F5)
+        )
+    }
+}
+
+@Composable
+private fun HeroBudgetCard(uiState: HomeUiState) {
+    val isOverBudget = uiState.isOverBudget
+    val isWarning = uiState.spentPercentage > 0.75f && !isOverBudget
+    val amountColor = when {
+        isOverBudget -> Color(0xFFE8433A)
+        isWarning    -> Color(0xFFFF9F1C)
+        else         -> Color(0xFF00C97A)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D0D14))
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("DAILY BUDGET LEFT",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF8C8CA1),
+                    letterSpacing = 1.5.sp)
+                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(amountColor))
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("฿", fontSize = 26.sp, fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(bottom = 6.dp))
+                Spacer(Modifier.width(3.dp))
+                Text(
+                    text = formatSimple(kotlin.math.abs(uiState.remainingBudget)),
+                    fontSize = 52.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    letterSpacing = (-1).sp
+                )
+            }
+            if (isOverBudget) {
+                Text("เกินงบ ${formatSimple(kotlin.math.abs(uiState.remainingBudget))} บาท",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFFE8433A))
+            }
+            Spacer(Modifier.height(20.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color(0xFF1A1A26))) {
+                Box(modifier = Modifier
+                    .fillMaxWidth(uiState.spentPercentage.coerceIn(0f, 1f))
+                    .height(4.dp).clip(CircleShape).background(amountColor))
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Spent ฿${formatSimple(uiState.totalSpentToday)}",
+                    style = MaterialTheme.typography.labelMedium, color = Color(0xFF8C8CA1))
+                Text("Budget ฿${formatSimple(uiState.dailyBudgetLimit)} / day",
+                    style = MaterialTheme.typography.labelMedium, color = Color(0xFF8C8CA1))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TransactionRow(
+    transaction: Transaction,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> { onEdit(); false }
+                SwipeToDismissBoxValue.EndToStart -> { onDelete(); false }
+                else -> false
+            }
+        }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            val dir = dismissState.dismissDirection
+            val bgColor = when (dir) {
+                SwipeToDismissBoxValue.StartToEnd -> Color(0xFF3730F5)
+                SwipeToDismissBoxValue.EndToStart -> Color(0xFFE8433A)
+                else -> Color.Transparent
+            }
+            val align = when (dir) {
+                SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+                SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+                else -> Alignment.Center
+            }
+            val icon = when (dir) {
+                SwipeToDismissBoxValue.StartToEnd -> Icons.Default.Edit
+                SwipeToDismissBoxValue.EndToStart -> Icons.Default.Delete
+                else -> null
+            }
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(bgColor)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = align
+            ) { icon?.let { Icon(it, null, tint = Color.White) } }
+        }
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(0.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(getCategoryEmoji(transaction.category), fontSize = 20.sp)
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(transaction.brand, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                    Text("${transaction.category} • ${formatTime(transaction.timestamp)}",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text("-฿${formatSimple(transaction.amount)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
+@Composable
 private fun ActionSelectionDialog(
     onDismiss: () -> Unit,
     onManualClick: () -> Unit,
@@ -328,102 +454,6 @@ private fun ActionSelectionDialog(
             }
         }
     )
-}
-
-@Composable
-private fun HeroBudgetCard(uiState: HomeUiState) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                uiState.isOverBudget -> MaterialTheme.colorScheme.errorContainer
-                else -> MaterialTheme.colorScheme.secondaryContainer
-            }
-        )
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-            Text(
-                text = "Remaining Budget",
-                style = MaterialTheme.typography.labelLarge,
-                color = if (uiState.isOverBudget) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = formatCurrency(uiState.remainingBudget),
-                fontSize = 40.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = if (uiState.isOverBudget) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer,
-                letterSpacing = (-1).sp
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            LinearProgressIndicator(
-                progress = { uiState.spentPercentage.coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
-                color = when {
-                    uiState.isOverBudget -> MaterialTheme.colorScheme.error
-                    uiState.spentPercentage > 0.8f -> Color(0xFFE65100) // Warning Orange
-                    else -> MaterialTheme.colorScheme.primary
-                },
-                trackColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Spent: ${formatCurrency(uiState.totalSpentToday)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
-                Text("Limit: ${formatCurrency(uiState.dailyBudgetLimit)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun TransactionRow(
-    transaction: Transaction,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = transaction.category.take(1),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = transaction.brand, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                Text(text = "${transaction.category} • ${formatTime(transaction.timestamp)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(
-                text = "-${formatCurrency(transaction.amount)}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
-            }
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -618,6 +648,22 @@ private fun DeleteConfirmDialog(
 private fun formatCurrency(amount: Double): String {
     val format = NumberFormat.getCurrencyInstance(Locale("th", "TH"))
     return format.format(amount)
+}
+
+private fun formatSimple(amount: Double): String {
+    return if (amount % 1 == 0.0) amount.toInt().toString()
+    else String.format("%.2f", amount)
+}
+
+private fun getCategoryEmoji(category: String) = when {
+    category.contains("Food", true) || category.contains("Drink", true) -> "🍜"
+    category.contains("Transport", true) -> "🚗"
+    category.contains("Shopping", true) -> "🛍️"
+    category.contains("Entertainment", true) -> "🎬"
+    category.contains("Bills", true) || category.contains("Utilities", true) -> "💡"
+    category.contains("Health", true) -> "💊"
+    category.contains("Education", true) -> "📚"
+    else -> "💳"
 }
 
 private fun formatTime(timestamp: Long): String {
