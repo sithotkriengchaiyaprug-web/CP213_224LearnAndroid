@@ -49,3 +49,6 @@ Zero Touch Budget คือแอปพลิเคชันจัดการ�
    GEMINI_API_KEY=your_api_key_here
    ```
 4. Sync Gradle แล้วกดรันแอปลงใน Emulator หรือ Device ได้เลย
+5. Wireframe
+   <img width="1847" height="1001" alt="image" src="https://github.com/user-attachments/assets/af6eb943-c1bf-4094-9d02-7cacaaff07f7" />
+
