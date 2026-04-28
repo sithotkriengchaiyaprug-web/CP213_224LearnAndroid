@@ -139,20 +139,86 @@ class ProcessReceiptImageUseCase @Inject constructor(
     }
 
     private fun extractAmountFromText(text: String): Double? {
-        val labeledPatterns = listOf(
-            Regex("""(?i)(?:amount|total|grand total|net|balance|sum|\u0E22\u0E2D\u0E14\u0E23\u0E27\u0E21|\u0E23\u0E27\u0E21\u0E17\u0E31\u0E49\u0E07\u0E2A\u0E34\u0E49\u0E19|\u0E23\u0E27\u0E21|\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19|\u0E08\u0E33\u0E19\u0E27\u0E19\u0E40\u0E07\u0E34\u0E19)\D*([0-9][0-9,]*(?:\.[0-9]{1,2})?)"""),
-            Regex("""(?i)([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:\u0E1A\u0E32\u0E17|thb|\u0E3F)""")
+        val lines = text.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+
+        val amountHints = listOf(
+            "amount",
+            "total",
+            "grand total",
+            "net",
+            "balance",
+            "sum",
+            "paid",
+            "payment",
+            "transfer",
+            "ยอด",
+            "รวม",
+            "รวมทั้งสิ้น",
+            "ชำระ",
+            "โอน",
+            "เงิน",
+            "บาท",
+            "thb",
+            "฿"
+        )
+        val noiseHints = listOf(
+            "ref",
+            "reference",
+            "trace",
+            "transaction id",
+            "txn",
+            "invoice",
+            "time",
+            "date"
         )
 
-        for (pattern in labeledPatterns) {
-            val value = pattern.find(text)?.groupValues?.getOrNull(1)?.let(::parseAmount)
-            if (value != null) return value
+        val candidates = mutableListOf<AmountCandidate>()
+        lines.forEachIndexed { index, line ->
+            val normalized = line.lowercase()
+            extractAmountTokens(line).forEach { token ->
+                val value = parseAmount(token) ?: return@forEach
+                if (!value.isFinite() || value <= 0.0 || value > 1_000_000.0) return@forEach
+
+                var score = 0
+                if (amountHints.any { normalized.contains(it) }) score += 100
+                if (noiseHints.any { normalized.contains(it) }) score -= 40
+                if (token.contains('.') || token.contains(',')) score += 20
+                if (token.replace(",", "").replace(".", "").length > 7) score -= 25
+                score += (50 - index).coerceAtLeast(0)
+
+                candidates += AmountCandidate(value, score, index, line)
+            }
         }
 
-        return Regex("""([0-9][0-9,]*(?:\.[0-9]{1,2})?)""")
-            .findAll(text)
-            .mapNotNull { match -> parseAmount(match.groupValues.getOrNull(1).orEmpty()) }
-            .maxOrNull()
+        return candidates
+            .maxWithOrNull(
+                compareBy<AmountCandidate> { it.score }
+                    .thenByDescending { it.value }
+            )
+            ?.value
+    }
+
+    private fun extractAmountTokens(text: String): List<String> {
+        val labeledPattern = Regex(
+            """(?i)(?:amount|total|grand total|net|balance|sum|paid|payment|transfer|\u0E22\u0E2D\u0E14|\u0E23\u0E27\u0E21|\u0E0A\u0E33\u0E23\u0E30|\u0E42\u0E2D\u0E19|\u0E40\u0E07\u0E34\u0E19)\D*([0-9][0-9,]*(?:\.[0-9]{1,2})?)"""
+        )
+        val currencyPattern = Regex("""([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:\u0E1A\u0E32\u0E17|thb|\u0E3F)""")
+        val genericPattern = Regex("""([0-9][0-9,]*(?:\.[0-9]{1,2})?)""")
+
+        val tokens = mutableListOf<String>()
+        labeledPattern.findAll(text).forEach { match ->
+            match.groupValues.getOrNull(1)?.let { tokens += it }
+        }
+        currencyPattern.findAll(text).forEach { match ->
+            match.groupValues.getOrNull(1)?.let { tokens += it }
+        }
+        genericPattern.findAll(text).forEach { match ->
+            match.groupValues.getOrNull(1)?.let { tokens += it }
+        }
+        return tokens.distinct()
     }
 
     private fun extractBrandFromText(text: String): String {
@@ -189,6 +255,13 @@ class ProcessReceiptImageUseCase @Inject constructor(
             .trim()
         return cleaned.toDoubleOrNull()
     }
+
+    private data class AmountCandidate(
+        val value: Double,
+        val score: Int,
+        val lineIndex: Int,
+        val lineText: String
+    )
 
     private data class ParsedReceipt(
         val amount: Double,

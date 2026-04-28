@@ -27,7 +27,6 @@ class ReceiptAutoScanWorker @AssistedInject constructor(
     private val autoScanSettingsRepository: AutoScanSettingsRepository,
     private val imageFinder: ReceiptAutoScanImageFinder,
     private val imageLoader: ReceiptImageLoader,
-    private val ocrPrechecker: ReceiptOcrPrechecker,
     private val processedReceiptImageRepository: ProcessedReceiptImageRepository,
     private val heuristics: ReceiptAutoScanHeuristics,
     private val processReceiptImageUseCase: ProcessReceiptImageUseCase
@@ -36,15 +35,26 @@ class ReceiptAutoScanWorker @AssistedInject constructor(
     override suspend fun doWork(): Result = supervisorScope {
         try {
             val settings = autoScanSettingsRepository.getCurrentSettings()
-            if (!settings.enabled) return@supervisorScope Result.success()
+            val allowWhenDisabled = inputData.getBoolean(KEY_ALLOW_DISABLED, false)
+            val syncHistory = inputData.getBoolean(KEY_SYNC_HISTORY, false)
+            if (!settings.enabled && !allowWhenDisabled) return@supervisorScope Result.success()
             if (settings.source == com.example.zerotouchbudget.domain.model.AutoScanSource.CUSTOM_FOLDER &&
                 settings.customFolderUri.isNullOrBlank()
             ) {
                 return@supervisorScope Result.success()
             }
 
+            val scanSettings = if (syncHistory) {
+                settings.copy(lastScannedAtMillis = 0L)
+            } else {
+                settings
+            }
+            val maxRowsToInspect = if (syncHistory) 500 else 200
             val learnedFolderCounts = processedReceiptImageRepository.getFolderCounts()
-            val queriedCandidates = imageFinder.findCandidates(settings)
+            val queriedCandidates = imageFinder.findCandidates(
+                settings = scanSettings,
+                maxRowsToInspect = maxRowsToInspect
+            )
             val candidates = queriedCandidates
                 .sortedWith(
                     compareByDescending<ReceiptMediaCandidate> {
@@ -52,20 +62,23 @@ class ReceiptAutoScanWorker @AssistedInject constructor(
                             relativePath = it.relativePath,
                             displayName = it.displayName,
                             learnedFolderCounts = learnedFolderCounts
-                        )
+                        ) + it.sourceHintScore
                     }.thenByDescending { it.dateAddedMillis }
                 )
                 .filterNot { candidate ->
                     processedReceiptImageRepository.isProcessed(candidate.uri)
                 }
-                .take(MAX_IMAGES_PER_RUN)
 
             if (candidates.isEmpty()) return@supervisorScope Result.success()
 
             processInBatches(candidates)
 
             val newestTimestamp = queriedCandidates.maxOfOrNull { it.dateAddedMillis }
-            if (newestTimestamp != null && newestTimestamp > settings.lastScannedAtMillis) {
+            if (
+                newestTimestamp != null &&
+                queriedCandidates.size < maxRowsToInspect &&
+                newestTimestamp > settings.lastScannedAtMillis
+            ) {
                 autoScanSettingsRepository.updateLastScannedAt(newestTimestamp)
             }
 
@@ -103,16 +116,10 @@ class ReceiptAutoScanWorker @AssistedInject constructor(
             return
         }
 
-        val ocrPassed = ocrPrechecker.containsReceiptText(bitmap)
-        if (!ocrPassed) {
-            processedReceiptImageRepository.markProcessed(candidate.toProcessedReceiptImage(false, false))
-            return
-        }
-
         val result = processReceiptImageUseCase(bitmap)
         processedReceiptImageRepository.markProcessed(
             candidate.toProcessedReceiptImage(
-                ocrPassed = true,
+                ocrPassed = result.isSuccess,
                 aiProcessed = result.isSuccess
             )
         )
@@ -133,11 +140,12 @@ class ReceiptAutoScanWorker @AssistedInject constructor(
         )
     }
 
-    private companion object {
+    companion object {
+        const val KEY_ALLOW_DISABLED = "allow_when_disabled"
+        const val KEY_SYNC_HISTORY = "sync_history"
         const val MAX_CONCURRENCY = 2
         const val BATCH_SIZE = 20
         const val BATCH_DELAY_MS = 350L
         const val MAX_BITMAP_EDGE = 1024
-        const val MAX_IMAGES_PER_RUN = 20
     }
 }

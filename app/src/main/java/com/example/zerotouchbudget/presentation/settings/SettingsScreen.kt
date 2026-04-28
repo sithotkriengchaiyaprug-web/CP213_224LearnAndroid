@@ -374,6 +374,22 @@ fun SettingsScreen(
                     ) {
                         Text("Save Auto Scan")
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.syncHistory()
+                            Toast.makeText(
+                                context,
+                                "Sync history started",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Sync History")
+                    }
                 }
             }
 

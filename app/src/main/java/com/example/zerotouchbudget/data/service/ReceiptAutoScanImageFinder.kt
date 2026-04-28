@@ -102,7 +102,6 @@ class ReceiptAutoScanImageFinder @Inject constructor(
 
                 if (dateAddedMillis <= settings.lastScannedAtMillis) continue
                 if (!looksLikeSupportedImage(displayName, mimeType)) continue
-                if (!matchesSource(settings.source, relativePath, displayName, bucketDisplayName)) continue
 
                 val id = cursor.getLong(idIndex)
                 val uri = Uri.withAppendedPath(
@@ -116,7 +115,13 @@ class ReceiptAutoScanImageFinder @Inject constructor(
                     displayName = displayName,
                     relativePath = resolvedRelativePath.orEmpty(),
                     dateAddedMillis = dateAddedMillis,
-                    folderName = heuristics.extractFolderName(resolvedRelativePath)
+                    folderName = heuristics.extractFolderName(resolvedRelativePath),
+                    sourceHintScore = scoreSourceHint(
+                        source = settings.source,
+                        relativePath = resolvedRelativePath,
+                        displayName = displayName,
+                        bucketDisplayName = bucketDisplayName
+                    )
                 )
             }
         }
@@ -170,34 +175,36 @@ class ReceiptAutoScanImageFinder @Inject constructor(
         return imageFileExtensions.any { normalized.endsWith(it) }
     }
 
-    private fun matchesSource(
+    private fun scoreSourceHint(
         source: AutoScanSource,
         relativePath: String?,
         displayName: String,
         bucketDisplayName: String?
-    ): Boolean {
+    ): Int {
         val normalized = listOfNotNull(relativePath, displayName, bucketDisplayName)
             .joinToString(" ")
             .lowercase()
 
         return when (source) {
-            AutoScanSource.SCREENSHOTS -> listOf(
-                "screenshot",
-                "screen shot",
-                "screen_capture",
-                "screen capture",
-                "screenshots"
-            ).any { normalized.contains(it) }
+            AutoScanSource.SCREENSHOTS -> if (listOf(
+                    "screenshot",
+                    "screen shot",
+                    "screen_capture",
+                    "screen capture",
+                    "screenshots"
+                ).any { normalized.contains(it) }
+            ) 40 else 0
 
-            AutoScanSource.CAMERA -> listOf(
-                "camera",
-                "dcim",
-                "img_",
-                "dsc_",
-                "photo"
-            ).any { normalized.contains(it) }
+            AutoScanSource.CAMERA -> if (listOf(
+                    "camera",
+                    "dcim",
+                    "img_",
+                    "dsc_",
+                    "photo"
+                ).any { normalized.contains(it) }
+            ) 40 else 0
 
-            AutoScanSource.CUSTOM_FOLDER -> true
+            AutoScanSource.CUSTOM_FOLDER -> 0
         }
     }
 
@@ -219,7 +226,8 @@ class ReceiptAutoScanImageFinder @Inject constructor(
                 displayName = displayName,
                 relativePath = parentPath,
                 dateAddedMillis = modifiedAt,
-                folderName = heuristics.extractFolderName(parentPath)
+                folderName = heuristics.extractFolderName(parentPath),
+                sourceHintScore = if (heuristics.isLikelyReceiptFile(displayName)) 20 else 0
             )
             return
         }

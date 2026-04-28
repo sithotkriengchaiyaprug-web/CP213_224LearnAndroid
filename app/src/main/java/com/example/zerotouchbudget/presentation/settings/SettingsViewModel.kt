@@ -72,5 +72,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+
+    fun syncHistory() {
+        viewModelScope.launch {
+            autoScanScheduler.syncHistory()
+        }
+    }
 }
 

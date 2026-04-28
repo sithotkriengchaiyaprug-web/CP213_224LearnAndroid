@@ -1,6 +1,7 @@
 package com.example.zerotouchbudget.data.service
 
 import android.content.Context
+import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -50,6 +51,23 @@ class ReceiptAutoScanScheduler @Inject constructor(
         )
     }
 
+    fun syncHistory() {
+        val work = OneTimeWorkRequestBuilder<ReceiptAutoScanWorker>()
+            .setInputData(
+                Data.Builder()
+                    .putBoolean(ReceiptAutoScanWorker.KEY_ALLOW_DISABLED, true)
+                    .putBoolean(ReceiptAutoScanWorker.KEY_SYNC_HISTORY, true)
+                    .build()
+            )
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            SYNC_HISTORY_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            work
+        )
+    }
+
     fun schedulePeriodic(settings: AutoScanSettings) {
         val periodicWork = PeriodicWorkRequestBuilder<ReceiptAutoScanWorker>(
             settings.intervalMinutes,
@@ -75,5 +93,6 @@ class ReceiptAutoScanScheduler @Inject constructor(
         const val IMMEDIATE_WORK_NAME = "receipt_auto_scan_immediate"
         const val BOOTSTRAP_WORK_NAME = "receipt_auto_scan_bootstrap"
         const val PERIODIC_WORK_NAME = "receipt_auto_scan_periodic"
+        const val SYNC_HISTORY_WORK_NAME = "receipt_auto_scan_sync_history"
     }
 }

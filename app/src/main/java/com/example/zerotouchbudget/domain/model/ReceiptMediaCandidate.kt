@@ -5,6 +5,7 @@ data class ReceiptMediaCandidate(
     val displayName: String,
     val relativePath: String,
     val dateAddedMillis: Long,
-    val folderName: String
+    val folderName: String,
+    val sourceHintScore: Int = 0
 )
 
