@@ -1,10 +1,8 @@
 package com.example.zerotouchbudget.data.service
 
 import android.content.Context
-import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -21,6 +19,7 @@ class ReceiptAutoScanScheduler @Inject constructor(
 
     fun schedule(settings: AutoScanSettings) {
         val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork(IMMEDIATE_WORK_NAME)
         workManager.cancelUniqueWork(BOOTSTRAP_WORK_NAME)
         workManager.cancelUniqueWork(PERIODIC_WORK_NAME)
 
@@ -29,6 +28,16 @@ class ReceiptAutoScanScheduler @Inject constructor(
         val delayMillis = (settings.startAtMillis ?: System.currentTimeMillis())
             .minus(System.currentTimeMillis())
             .coerceAtLeast(0L)
+
+        val immediateWork = OneTimeWorkRequestBuilder<ReceiptAutoScanWorker>()
+            .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+            .build()
+
+        workManager.enqueueUniqueWork(
+            IMMEDIATE_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            immediateWork
+        )
 
         val bootstrapWork = OneTimeWorkRequestBuilder<ReceiptAutoScanBootstrapWorker>()
             .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
@@ -46,11 +55,6 @@ class ReceiptAutoScanScheduler @Inject constructor(
             settings.intervalMinutes,
             TimeUnit.MINUTES
         )
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
-            )
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -62,11 +66,13 @@ class ReceiptAutoScanScheduler @Inject constructor(
 
     fun cancel() {
         val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork(IMMEDIATE_WORK_NAME)
         workManager.cancelUniqueWork(BOOTSTRAP_WORK_NAME)
         workManager.cancelUniqueWork(PERIODIC_WORK_NAME)
     }
 
     private companion object {
+        const val IMMEDIATE_WORK_NAME = "receipt_auto_scan_immediate"
         const val BOOTSTRAP_WORK_NAME = "receipt_auto_scan_bootstrap"
         const val PERIODIC_WORK_NAME = "receipt_auto_scan_periodic"
     }

@@ -9,21 +9,21 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
 import androidx.glance.appwidget.updateAll
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognizer
 import com.example.zerotouchbudget.domain.model.Transaction
 import com.example.zerotouchbudget.domain.model.TransactionSource
 import com.example.zerotouchbudget.domain.repository.TransactionRepository
 import com.example.zerotouchbudget.presentation.widget.BudgetWidget
-import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.content
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import kotlinx.coroutines.tasks.await
 import java.util.UUID
 import javax.inject.Inject
 
 class ProcessReceiptImageUseCase @Inject constructor(
-    private val generativeModel: GenerativeModel,
+    private val textRecognizer: TextRecognizer,
     private val repository: TransactionRepository,
     @ApplicationContext private val context: Context
 ) {
@@ -35,7 +35,8 @@ class ProcessReceiptImageUseCase @Inject constructor(
     }
 
     suspend operator fun invoke(bitmap: Bitmap): Result<Transaction> = runCatching {
-        val parsed = analyzeReceiptWithModel(bitmap)
+        val preparedBitmap = prepareImageForApi(bitmap)
+        val parsed = analyzeReceiptWithOcr(preparedBitmap)
         if (parsed.amount <= 0.0) throw IllegalArgumentException("Invalid amount extracted")
 
         val transaction = Transaction(
@@ -53,23 +54,15 @@ class ProcessReceiptImageUseCase @Inject constructor(
         transaction
     }
 
-    private suspend fun analyzeReceiptWithModel(
+    private suspend fun analyzeReceiptWithOcr(
         bitmap: Bitmap
     ): ParsedReceipt {
-        val prompt = """
-            Analyze this receipt. Extract the total amount and the store/brand name.
-            Return ONLY a valid JSON object in this exact format:
-            {"amount": 150.50, "brand": "Starbucks"}
-            Do not include markdown formatting, backticks, or any other text.
-        """.trimIndent()
-
-        val response = generativeModel.generateContent(content {
-            image(bitmap)
-            text(prompt)
-        })
-
-        val rawResponse = response.text ?: throw Exception("Empty response from Gemini")
-        return parseReceiptResponse(rawResponse)
+        val result = textRecognizer.process(InputImage.fromBitmap(bitmap, 0)).await()
+        val rawText = result.text.trim()
+        if (rawText.isBlank()) {
+            throw IllegalArgumentException("Empty OCR result from ML Kit")
+        }
+        return parseReceiptText(rawText)
     }
 
     private suspend fun uriToBitmap(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
@@ -137,42 +130,56 @@ class ProcessReceiptImageUseCase @Inject constructor(
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
-    private fun parseReceiptResponse(responseText: String): ParsedReceipt {
+    private fun parseReceiptText(responseText: String): ParsedReceipt {
         val normalized = responseText.trim()
-        val jsonCandidate = extractJsonObject(normalized)
-
-        if (jsonCandidate != null) {
-            runCatching {
-                val json = JSONObject(jsonCandidate)
-                val amount = parseAmount(json.optString("amount", ""))
-                    ?: json.optDouble("amount").takeIf { !it.isNaN() }
-                val brand = json.optString("brand", "").trim()
-                if (amount != null && amount > 0.0 && brand.isNotBlank()) {
-                    return ParsedReceipt(amount = amount, brand = brand)
-                }
-            }
-        }
-
         val fallbackAmount = extractAmountFromText(normalized)
-            ?: throw IllegalArgumentException("Could not extract amount from Gemini response")
+            ?: throw IllegalArgumentException("Could not extract amount from OCR result")
         val fallbackBrand = extractBrandFromText(normalized)
         return ParsedReceipt(amount = fallbackAmount, brand = fallbackBrand)
     }
 
-    private fun extractJsonObject(text: String): String? {
-        val start = text.indexOf('{')
-        val end = text.lastIndexOf('}')
-        return if (start >= 0 && end > start) text.substring(start, end + 1) else null
-    }
-
     private fun extractAmountFromText(text: String): Double? {
-        val regex = Regex("""(?i)(?:amount|total)\D*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""")
-        return regex.find(text)?.groupValues?.getOrNull(1)?.let(::parseAmount)
+        val labeledPatterns = listOf(
+            Regex("""(?i)(?:amount|total|grand total|net|balance|sum|\u0E22\u0E2D\u0E14\u0E23\u0E27\u0E21|\u0E23\u0E27\u0E21\u0E17\u0E31\u0E49\u0E07\u0E2A\u0E34\u0E49\u0E19|\u0E23\u0E27\u0E21|\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19|\u0E08\u0E33\u0E19\u0E27\u0E19\u0E40\u0E07\u0E34\u0E19)\D*([0-9][0-9,]*(?:\.[0-9]{1,2})?)"""),
+            Regex("""(?i)([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:\u0E1A\u0E32\u0E17|thb|\u0E3F)""")
+        )
+
+        for (pattern in labeledPatterns) {
+            val value = pattern.find(text)?.groupValues?.getOrNull(1)?.let(::parseAmount)
+            if (value != null) return value
+        }
+
+        return Regex("""([0-9][0-9,]*(?:\.[0-9]{1,2})?)""")
+            .findAll(text)
+            .mapNotNull { match -> parseAmount(match.groupValues.getOrNull(1).orEmpty()) }
+            .maxOrNull()
     }
 
     private fun extractBrandFromText(text: String): String {
-        val regex = Regex("""(?i)(?:brand|store)\D*([A-Za-z0-9 &\-'.]{2,})""")
-        return regex.find(text)?.groupValues?.getOrNull(1)?.trim().orEmpty().ifBlank { "Unknown Merchant" }
+        val lines = text
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+
+        val blockedWords = listOf(
+            "receipt",
+            "invoice",
+            "total",
+            "subtotal",
+            "amount",
+            "change",
+            "cash",
+            "vat",
+            "thank you"
+        )
+
+        return lines.firstOrNull { line ->
+            line.length in 2..40 &&
+                line.any { it.isLetter() } &&
+                !line.any { it.isDigit() } &&
+                blockedWords.none { word -> line.contains(word, ignoreCase = true) }
+        }?.trim().orEmpty().ifBlank { "Unknown Merchant" }
     }
 
     private fun parseAmount(raw: String): Double? {

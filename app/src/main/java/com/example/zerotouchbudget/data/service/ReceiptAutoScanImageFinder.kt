@@ -7,6 +7,9 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
+import com.example.zerotouchbudget.domain.model.AutoScanSettings
+import com.example.zerotouchbudget.domain.model.AutoScanSource
 import com.example.zerotouchbudget.domain.model.ReceiptAutoScanHeuristics
 import com.example.zerotouchbudget.domain.model.ReceiptMediaCandidate
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -22,8 +25,40 @@ class ReceiptAutoScanImageFinder @Inject constructor(
 ) {
 
     suspend fun findCandidates(
+        settings: AutoScanSettings,
+        maxRowsToInspect: Int = 200
+    ): List<ReceiptMediaCandidate> {
+        return when (settings.source) {
+            AutoScanSource.SCREENSHOTS -> findMediaStoreCandidates(
+                settings = settings,
+                maxRowsToInspect = maxRowsToInspect
+            )
+            AutoScanSource.CAMERA -> findMediaStoreCandidates(
+                settings = settings,
+                maxRowsToInspect = maxRowsToInspect
+            )
+            AutoScanSource.CUSTOM_FOLDER -> findCustomFolderCandidates(
+                settings = settings,
+                maxRowsToInspect = maxRowsToInspect
+            )
+        }
+    }
+
+    suspend fun findCandidates(
         lastScannedAtMillis: Long,
         maxRowsToInspect: Int = 200
+    ): List<ReceiptMediaCandidate> = findCandidates(
+        AutoScanSettings(lastScannedAtMillis = lastScannedAtMillis),
+        maxRowsToInspect
+    )
+
+    suspend fun findLatestReceipt(lastScannedAtMillis: Long): ReceiptMediaCandidate? {
+        return findCandidates(lastScannedAtMillis).firstOrNull()
+    }
+
+    private suspend fun findMediaStoreCandidates(
+        settings: AutoScanSettings,
+        maxRowsToInspect: Int
     ): List<ReceiptMediaCandidate> = withContext(Dispatchers.IO) {
         if (!hasImagePermission()) return@withContext emptyList()
 
@@ -32,11 +67,12 @@ class ReceiptAutoScanImageFinder @Inject constructor(
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.RELATIVE_PATH,
             MediaStore.Images.Media.DATE_ADDED,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+            MediaStore.Images.Media.MIME_TYPE
         )
 
-        val selection = buildSelection()
-        val selectionArgs = buildSelectionArgs(lastScannedAtMillis)
+        val selection = "${MediaStore.Images.Media.DATE_ADDED} > ?"
+        val selectionArgs = arrayOf((settings.lastScannedAtMillis / 1000L).coerceAtLeast(0L).toString())
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
         val results = ArrayList<ReceiptMediaCandidate>()
@@ -52,36 +88,28 @@ class ReceiptAutoScanImageFinder @Inject constructor(
             val relativePathIndex = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
             val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
             val bucketDisplayNameIndex = cursor.getColumnIndex(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+            val mimeTypeIndex = cursor.getColumnIndex(MediaStore.Images.Media.MIME_TYPE)
 
             var inspectedRows = 0
             while (cursor.moveToNext() && inspectedRows < maxRowsToInspect) {
                 inspectedRows++
 
                 val displayName = cursor.getString(displayNameIndex).orEmpty()
-                val relativePath = if (relativePathIndex >= 0) {
-                    cursor.getString(relativePathIndex)
-                } else {
-                    null
-                }
-                val bucketDisplayName = if (bucketDisplayNameIndex >= 0) {
-                    cursor.getString(bucketDisplayNameIndex)
-                } else {
-                    null
-                }
-                val dateAddedSeconds = cursor.getLong(dateAddedIndex)
-                val dateAddedMillis = dateAddedSeconds * 1000L
+                val relativePath = if (relativePathIndex >= 0) cursor.getString(relativePathIndex) else null
+                val bucketDisplayName = if (bucketDisplayNameIndex >= 0) cursor.getString(bucketDisplayNameIndex) else null
+                val mimeType = if (mimeTypeIndex >= 0) cursor.getString(mimeTypeIndex) else null
+                val dateAddedMillis = cursor.getLong(dateAddedIndex) * 1000L
 
-                if (dateAddedMillis <= lastScannedAtMillis) continue
-                val resolvedRelativePath = relativePath
-                    ?: bucketDisplayName?.let { "Pictures/$it/" }
-                if (!heuristics.isBankFolder(resolvedRelativePath)) continue
-                if (!heuristics.isLikelyReceiptFile(displayName)) continue
+                if (dateAddedMillis <= settings.lastScannedAtMillis) continue
+                if (!looksLikeSupportedImage(displayName, mimeType)) continue
+                if (!matchesSource(settings.source, relativePath, displayName, bucketDisplayName)) continue
 
                 val id = cursor.getLong(idIndex)
                 val uri = Uri.withAppendedPath(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     id.toString()
                 )
+                val resolvedRelativePath = relativePath ?: bucketDisplayName?.let { "Pictures/$it/" }
 
                 results += ReceiptMediaCandidate(
                     uri = uri.toString(),
@@ -96,72 +124,30 @@ class ReceiptAutoScanImageFinder @Inject constructor(
         results
     }
 
-    suspend fun findLatestReceipt(lastScannedAtMillis: Long): ReceiptMediaCandidate? {
-        return findCandidates(lastScannedAtMillis).firstOrNull()
-    }
+    private suspend fun findCustomFolderCandidates(
+        settings: AutoScanSettings,
+        maxRowsToInspect: Int
+    ): List<ReceiptMediaCandidate> = withContext(Dispatchers.IO) {
+        val folderUriString = settings.customFolderUri.orEmpty()
+        if (folderUriString.isBlank()) return@withContext emptyList()
 
-    private fun buildSelection(): String {
-        val receiptNameClauses = listOf("slip", "receipt", "transfer", "payment")
-            .joinToString(" OR ") { "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?" }
+        val rootUri = runCatching { Uri.parse(folderUriString) }.getOrNull()
+            ?: return@withContext emptyList()
 
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val bankFolderClauses = listOf("scb", "kbank", "krungthai", "bbl", "ktb")
-                .joinToString(" OR ") { "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?" }
-            buildString {
-                append("${MediaStore.Images.Media.DATE_ADDED} > ?")
-                append(" AND ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?")
-                append(" AND (")
-                append(bankFolderClauses)
-                append(")")
-                append(" AND (")
-                append(receiptNameClauses)
-                append(")")
-            }
-        } else {
-            val bankFolderClauses = listOf("scb", "kbank", "krungthai", "bbl", "ktb")
-                .joinToString(" OR ") { "${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} LIKE ?" }
-            buildString {
-                append("${MediaStore.Images.Media.DATE_ADDED} > ?")
-                append(" AND (")
-                append(bankFolderClauses)
-                append(")")
-                append(" AND (")
-                append(receiptNameClauses)
-                append(")")
-            }
-        }
-    }
+        val rootDocument = DocumentFile.fromTreeUri(context, rootUri)
+            ?: return@withContext emptyList()
 
-    private fun buildSelectionArgs(lastScannedAtMillis: Long): Array<String> {
-        val lastScannedAtSeconds = (lastScannedAtMillis / 1000L).coerceAtLeast(0L).toString()
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            arrayOf(
-                lastScannedAtSeconds,
-                "Pictures/%",
-                "%scb%",
-                "%kbank%",
-                "%krungthai%",
-                "%bbl%",
-                "%ktb%",
-                "%slip%",
-                "%receipt%",
-                "%transfer%",
-                "%payment%"
-            )
-        } else {
-            arrayOf(
-                lastScannedAtSeconds,
-                "%scb%",
-                "%kbank%",
-                "%krungthai%",
-                "%bbl%",
-                "%ktb%",
-                "%slip%",
-                "%receipt%",
-                "%transfer%",
-                "%payment%"
-            )
-        }
+        val results = ArrayList<ReceiptMediaCandidate>()
+        collectImageCandidatesFromDocumentTree(
+            document = rootDocument,
+            parentPath = rootDocument.name.orEmpty(),
+            lastScannedAtMillis = settings.lastScannedAtMillis,
+            results = results
+        )
+
+        results
+            .sortedByDescending { it.dateAddedMillis }
+            .take(maxRowsToInspect)
     }
 
     private fun hasImagePermission(): Boolean {
@@ -177,4 +163,94 @@ class ReceiptAutoScanImageFinder @Inject constructor(
             ) == PackageManager.PERMISSION_GRANTED
         }
     }
+
+    private fun looksLikeSupportedImage(displayName: String, mimeType: String?): Boolean {
+        if (mimeType?.startsWith("image/") == true) return true
+        val normalized = displayName.lowercase()
+        return imageFileExtensions.any { normalized.endsWith(it) }
+    }
+
+    private fun matchesSource(
+        source: AutoScanSource,
+        relativePath: String?,
+        displayName: String,
+        bucketDisplayName: String?
+    ): Boolean {
+        val normalized = listOfNotNull(relativePath, displayName, bucketDisplayName)
+            .joinToString(" ")
+            .lowercase()
+
+        return when (source) {
+            AutoScanSource.SCREENSHOTS -> listOf(
+                "screenshot",
+                "screen shot",
+                "screen_capture",
+                "screen capture",
+                "screenshots"
+            ).any { normalized.contains(it) }
+
+            AutoScanSource.CAMERA -> listOf(
+                "camera",
+                "dcim",
+                "img_",
+                "dsc_",
+                "photo"
+            ).any { normalized.contains(it) }
+
+            AutoScanSource.CUSTOM_FOLDER -> true
+        }
+    }
+
+    private fun collectImageCandidatesFromDocumentTree(
+        document: DocumentFile,
+        parentPath: String,
+        lastScannedAtMillis: Long,
+        results: MutableList<ReceiptMediaCandidate>
+    ) {
+        if (document.isFile) {
+            val displayName = document.name.orEmpty()
+            if (!looksLikeSupportedImage(displayName, document.type)) return
+
+            val modifiedAt = document.lastModified().takeIf { it > 0L } ?: System.currentTimeMillis()
+            if (modifiedAt <= lastScannedAtMillis) return
+
+            results += ReceiptMediaCandidate(
+                uri = document.uri.toString(),
+                displayName = displayName,
+                relativePath = parentPath,
+                dateAddedMillis = modifiedAt,
+                folderName = heuristics.extractFolderName(parentPath)
+            )
+            return
+        }
+
+        val nextParent = document.name?.takeIf { it.isNotBlank() }?.let { name ->
+            if (parentPath.isBlank()) name else "$parentPath/$name"
+        } ?: parentPath
+
+        document.listFiles().forEach { child ->
+            val childPath = if (child.isFile) {
+                nextParent
+            } else {
+                child.name?.takeIf { it.isNotBlank() }?.let { name ->
+                    if (nextParent.isBlank()) name else "$nextParent/$name"
+                } ?: nextParent
+            }
+            collectImageCandidatesFromDocumentTree(
+                document = child,
+                parentPath = childPath,
+                lastScannedAtMillis = lastScannedAtMillis,
+                results = results
+            )
+        }
+    }
+
+    private val imageFileExtensions = listOf(
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".heic",
+        ".heif"
+    )
 }

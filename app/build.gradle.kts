@@ -19,11 +19,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField(
-            "String",
-            "GEMINI_API_KEY",
-            "\"${project.findProperty("GEMINI_API_KEY") ?: "YOUR_API_KEY_HERE"}\""
-        )
     }
 
     buildTypes {
@@ -90,9 +85,6 @@ dependencies {
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.7")
-
-    // Gemini AI
-    implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
 
     // ML Kit OCR
     implementation("com.google.mlkit:text-recognition:16.0.1")

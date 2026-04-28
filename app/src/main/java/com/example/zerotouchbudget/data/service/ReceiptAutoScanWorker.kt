@@ -37,9 +37,14 @@ class ReceiptAutoScanWorker @AssistedInject constructor(
         try {
             val settings = autoScanSettingsRepository.getCurrentSettings()
             if (!settings.enabled) return@supervisorScope Result.success()
+            if (settings.source == com.example.zerotouchbudget.domain.model.AutoScanSource.CUSTOM_FOLDER &&
+                settings.customFolderUri.isNullOrBlank()
+            ) {
+                return@supervisorScope Result.success()
+            }
 
             val learnedFolderCounts = processedReceiptImageRepository.getFolderCounts()
-            val queriedCandidates = imageFinder.findCandidates(settings.lastScannedAtMillis)
+            val queriedCandidates = imageFinder.findCandidates(settings)
             val candidates = queriedCandidates
                 .sortedWith(
                     compareByDescending<ReceiptMediaCandidate> {
